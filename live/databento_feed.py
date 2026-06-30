@@ -73,6 +73,8 @@ class DatabentоLiveFeed:
     Blocking iterator — yields one bar dict each time a minute closes.
     """
 
+    feed_name = "Databento (real-time push)"
+
     def __init__(self, symbol: str = "NQ", api_key: str = ""):
         try:
             import databento as db

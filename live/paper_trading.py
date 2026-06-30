@@ -206,7 +206,7 @@ class PaperTradingSession:
         self.live_orders = live_orders
         self.replay_bars = replay_bars
         self._yf_feed    = None
-        self._db_feed    = None
+        self._db_feed    = None  # holds Databento OR Tradovate feed (same interface)
 
         if not replay_bars:
             if use_databento:
@@ -215,9 +215,22 @@ class PaperTradingSession:
                     self._db_feed = DatabentоLiveFeed(symbol)
                     log.info("Databento live feed active — symbol=%s", symbol)
                 except Exception as exc:
-                    log.warning("Databento unavailable (%s) — falling back to yfinance (15-min delay)", exc)
-                    tg.send("⚠️ <b>Databento feed failed</b> — falling back to yfinance (15-min delay). Check API key.")
+                    log.warning("Databento unavailable (%s) — trying Tradovate feed", exc)
+
+            # Tradovate fallback: free with Apex eval, same interface as Databento
+            if not self._db_feed and os.getenv("TRADOVATE_USERNAME"):
+                try:
+                    from live.tradovate_feed import TradovateLiveFeed
+                    self._db_feed = TradovateLiveFeed(symbol)
+                    log.info("Tradovate data feed active — symbol=%s (60 s polling)", symbol)
+                except Exception as tv_exc:
+                    log.warning("Tradovate feed unavailable (%s) — falling back to yfinance", tv_exc)
                     use_yfinance = True
+
+            if not self._db_feed and not use_yfinance:
+                log.warning("No live feed available — falling back to yfinance (15-min delay)")
+                tg.send("⚠️ <b>No live data feed</b> — set TRADOVATE_USERNAME in .env, or accept yfinance 15-min delay.")
+                use_yfinance = True
 
             if use_yfinance and not self._db_feed:
                 from live.yfinance_feed import YFinanceFeed
@@ -292,9 +305,10 @@ class PaperTradingSession:
     def _run_stream(self):
         """Event-driven live session via Databento WebSocket. No polling — each bar
         arrives the instant the minute closes."""
-        log.info("Starting Databento stream session [%s] ...", self.symbol)
+        feed_label = getattr(self._db_feed, "feed_name", "Databento push (real-time)")
         mode_label = "LIVE orders" if self.live_orders else "Paper (no orders)"
-        tg.send_startup(self.symbol, "Databento push (real-time)", mode_label)
+        log.info("Starting stream session [%s] via %s ...", self.symbol, feed_label)
+        tg.send_startup(self.symbol, feed_label, mode_label)
 
         if self.live_orders and self.execution:
             if not self.execution.connect():
