@@ -272,27 +272,47 @@ class PaperTradingSession:
         self._last_halt_reason: Optional[str] = None
 
     def connect(self) -> bool:
+        """Validate we have a usable feed. Actual connection happens inside run()
+        after _wait_for_window() so tokens are fresh at market open."""
         if self.replay_bars:
             log.info("REPLAY mode — %d bars loaded", len(self.replay_bars))
             return True
         if self._db_feed:
-            try:
-                self._db_feed.connect()
-                log.info("Databento WebSocket connected — real-time bars, zero delay")
-                return True
-            except Exception as exc:
-                log.error("Databento connect failed: %s", exc)
-                return False
-        if self._yf_feed:
-            log.info("yfinance paper mode — %s (15-min delay fallback)", self.symbol)
+            log.info("Feed ready: %s", getattr(self._db_feed, "feed_name", "live feed"))
             return True
-        if not REQUESTS_OK:
-            log.error("requests library not installed")
-            return False
-        if self.live_orders and self.execution:
-            return self.execution.connect()
-        log.info("Paper mode — market data via Tradovate polling")
-        return True
+        if self._yf_feed:
+            log.info("yfinance fallback ready — %s (15-min delay)", self.symbol)
+            return True
+        log.error("No data feed configured — check credentials in .env")
+        return False
+
+    # ── Trading window guard ─────────────────────────────────────────────────
+
+    @staticmethod
+    def _wait_for_window():
+        """
+        Sleep until the pre-market window (7:45 AM ET).
+        Called at process start so systemd restarts after EOD don't hammer
+        the Tradovate API hundreds of times overnight.
+        """
+        PRE_OPEN = dtime(7, 45)
+        EOD      = dtime(21, 16)   # 1 min past latest EOD so we don't re-enter today
+        while True:
+            t = datetime.now().time()
+            in_window = PRE_OPEN <= t <= EOD
+            if in_window:
+                return
+            # Compute seconds until 7:45 AM (may be tomorrow)
+            now_s = t.hour * 3600 + t.minute * 60 + t.second
+            open_s = PRE_OPEN.hour * 3600 + PRE_OPEN.minute * 60
+            if now_s < open_s:
+                wait_s = open_s - now_s
+            else:
+                wait_s = (86400 - now_s) + open_s  # seconds until 7:45 AM tomorrow
+            sleep_s = min(wait_s, 1800)            # wake at most every 30 min
+            log.info("Outside trading window (%s ET) — sleeping %d min",
+                     t.strftime("%H:%M"), sleep_s // 60)
+            time.sleep(sleep_s)
 
     def run(self):
         if self.replay_bars:
@@ -303,9 +323,17 @@ class PaperTradingSession:
             self._run_live()
 
     def _run_stream(self):
-        """Event-driven live session via Databento WebSocket. No polling — each bar
-        arrives the instant the minute closes."""
-        feed_label = getattr(self._db_feed, "feed_name", "Databento push (real-time)")
+        """Live session — Tradovate or Databento feed (same interface)."""
+        self._wait_for_window()
+
+        # Reconnect feed in case token expired during overnight wait
+        try:
+            self._db_feed.connect()
+        except Exception as exc:
+            log.error("Feed reconnect failed: %s — exiting", exc)
+            return
+
+        feed_label = getattr(self._db_feed, "feed_name", "live feed")
         mode_label = "LIVE orders" if self.live_orders else "Paper (no orders)"
         log.info("Starting stream session [%s] via %s ...", self.symbol, feed_label)
         tg.send_startup(self.symbol, feed_label, mode_label)
@@ -320,7 +348,6 @@ class PaperTradingSession:
             for bar in self._db_feed.stream():
                 now_et = datetime.now()
                 t = now_et.time()
-                # Stay alive through Asia session (6pm-9pm ET); shut down at 9:15 PM
                 eod = dtime(21, 15) if config.ASIA_ENABLED else dtime(16, 5)
                 if t > eod:
                     log.info("Session complete — shutting down stream")
@@ -338,8 +365,9 @@ class PaperTradingSession:
             self._db_feed.close()
 
     def _run_live(self):
-        """Polling fallback (yfinance or Tradovate). Used only when Databento unavailable."""
-        log.warning("Starting POLLING fallback session [%s] — Databento unavailable", self.symbol)
+        """yfinance polling fallback — only used when no live feed is available."""
+        self._wait_for_window()
+        log.warning("Starting yfinance POLLING session [%s] — 15-min delay", self.symbol)
         tg.send_startup(self.symbol, "yfinance polling (15-min delay — DEGRADED)",
                         "Live orders" if self.live_orders else "Paper")
 
@@ -352,11 +380,6 @@ class PaperTradingSession:
         while True:
             now_et = datetime.now()
             t = now_et.time()
-
-            if t < dtime(8, 0):
-                log.info("Pre-market — sleeping 60s")
-                time.sleep(60)
-                continue
             eod = dtime(21, 15) if config.ASIA_ENABLED else dtime(16, 5)
             if t > eod:
                 log.info("Session complete — shutting down")
