@@ -1,0 +1,20 @@
+# Credentials — never commit
+.env
+
+# Large data files — download fresh on VPS
+data/*.csv
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Logs
+*.log
+live/session.log
+live/paper_trades.csv
+
+# OS
+.DS_Store

@@ -1,0 +1,12 @@
+[Unit]
+Description=CruzCapital Overnight Research
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=nqbot
+WorkingDirectory=/home/nqbot/nq_bot
+EnvironmentFile=/home/nqbot/nq_bot/.env
+ExecStart=/home/nqbot/nq_bot/venv/bin/python research_overnight.py
+StandardOutput=append:/home/nqbot/logs/research.log
+StandardError=append:/home/nqbot/logs/research.log

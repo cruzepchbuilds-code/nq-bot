@@ -1,0 +1,587 @@
+{
+  "version": "1.0",
+  "last_updated": "2026-06-14 22:51",
+  "discoveries": [
+    {
+      "title": "Signal Strength Scorer is Inverted",
+      "finding": "The signal strength scorer (0-100) is inversely correlated with actual trade quality. Score 60-69: WR 51.7%, PF 2.03. Score 70-79: WR 36.5%, PF 1.09. The system currently sizes UP on exactly the wrong trades.",
+      "evidence": "trade_memory.csv (286 trades, 2022-2026), insights.md analysis",
+      "action": "Recalibrate scorer. Short-term: invert sizing (60-69=2c, 70-89=1c). Long-term: rebuild scorer from OOS-only component testing.",
+      "date": "2026-06-14"
+    },
+    {
+      "title": "Monthly-Independent Simulation Bias",
+      "finding": "The walk_forward.py and monte_carlo.py monthly-independent mode starts each month with prev_close=None, blocking all entries on day 1 of each month (neutral gap). April 2025: 0 trades in monthly mode vs 1 trade in continuous mode. April 2025 was the Trump tariff shock month (ORs 140-352pt on most days; only 4 days tradeable).",
+      "evidence": "Direct comparison: Backtester() on April 2025 alone = 0 trades; continuous from Jan 2025 = 1 trade on April 1.",
+      "action": "Fix monthly-independent simulation by seeding prev_close from prior month's last bar.",
+      "date": "2026-06-14"
+    },
+    {
+      "title": "April 2025 Tariff Shock \u2014 Zero Trading Month",
+      "finding": "April 2025 had 25 trading days but 0 qualifying ORB setups in monthly-independent mode. Root cause: Trump 'Liberation Day' tariffs (April 2) caused NQ OR of 140-352pt on 17/21 non-Monday days. OR_MAX filter of 110pt correctly excluded these chaos days. Only 4 days (Apr 1, 16, 25, 29) had OR in 55-110pt range.",
+      "evidence": "bar count analysis: 28,977 bars, 25 trading days. OR analysis per day in April 2025.",
+      "action": "No action needed \u2014 OR_MAX filter working correctly. Document as expected behavior during high-volatility events.",
+      "date": "2026-06-14"
+    },
+    {
+      "title": "Friday Day-of-Week is Weakest Non-Monday",
+      "finding": "Friday WR 35.8% (n=67), PF 1.06 \u2014 the weakest non-Monday day. Monday is skipped. Friday is borderline: PF 1.06 barely above 1.0. Skipping Fridays would remove ~20% of trades but improve average quality.",
+      "evidence": "insights.md Day of Week table (286 trades, 2022-2026)",
+      "action": "Test Friday skip hypothesis. Expected: +0.08 PF improvement, -20% trade count.",
+      "date": "2026-06-14"
+    },
+    {
+      "title": "Gap Dead Zone 40-60pt is Unstable Across Years",
+      "finding": "Gap 40-60pt has WR 32.5% (n=40) in aggregate, but excluding these gaps was tested and rejected: 2025 OOS improved (PF 2.22) but 2026 OOS collapsed (PF 1.17). The dead zone pattern is real but not consistent across years.",
+      "evidence": "improvement_results.md Improvement #4. Two-year OOS instability confirmed.",
+      "action": "Do not apply hard exclusion. Consider single-contract sizing for gap 40-60pt days.",
+      "date": "2026-06-14"
+    },
+    {
+      "title": "Consecutive Losing Days Rule is Optimal at 2",
+      "finding": "Testing MAX_CONSECUTIVE_LOSING_DAYS at 3 (PF 1.63) and 999 (PF 1.68) both performed worse than the current setting of 2 (PF 1.73). The bankroll protection of sitting out after 2 losing days outweighs the marginal WR improvement from trading.",
+      "evidence": "improvement_results.md Improvement #5",
+      "action": "Keep MAX_CONSECUTIVE_LOSING_DAYS=2. Do not change.",
+      "date": "2026-06-14"
+    },
+    {
+      "title": "Volume Ratio Gate: Floor Works, Ceiling Doesn't",
+      "finding": "Vol ratio floor at 0.8x: flat PF (1.73). Vol ratio floor at 1.0x: worse (-0.02). BUT: vol ratio 1.5x+ WR 27.3% (n=11). A CEILING (exclude high vol) may work even though a floor didn't. High-volume OR bars are often news/reversal events.",
+      "evidence": "improvement_results.md Improvement #7, trade_memory.csv volume analysis",
+      "action": "Test: exclude trades where vol_ratio > 1.5x. Hypothesis H01 in pipeline.",
+      "date": "2026-06-14"
+    },
+    {
+      "title": "Regime Detector Fade Mode is Dead Code",
+      "finding": "REGIME_BREAKOUT_THRESHOLD = REGIME_FADE_THRESHOLD = 0.18. Equal thresholds mean 'fade' is never returned by classify(). The fade strategy code path is permanently inaccessible in current configuration.",
+      "evidence": "regime.py classify() function analysis",
+      "action": "Fix threshold asymmetry: breakout >= 0.25, fade < 0.15, skip < 0.08. Then test fade strategy OOS before enabling.",
+      "date": "2026-06-14"
+    }
+  ],
+  "failed_strategies": [
+    {
+      "name": "PM VWAP Continuation",
+      "config": "12:00-14:30 ET, VWAP touch + direction bias",
+      "results": {
+        "oos_net": -11500,
+        "oos_pf": 0.4
+      },
+      "reason_failed": "Strong negative OOS P&L, cascades halts",
+      "date": "2026-06-14"
+    },
+    {
+      "name": "Gap Fill Strategy",
+      "config": "Large gap days, fade toward prior close",
+      "results": {
+        "oos_net": -4400,
+        "oos_pf": 0.8
+      },
+      "reason_failed": "Consistent OOS drag across all years",
+      "date": "2026-06-14"
+    },
+    {
+      "name": "VWAP Pullback (AM)",
+      "config": "Second trade after ORB, VWAP touch",
+      "results": {
+        "oos_net": -1400,
+        "oos_pf": 1.46
+      },
+      "reason_failed": "Redundant to ORB, insufficient independent edge",
+      "date": "2026-06-14"
+    },
+    {
+      "name": "London/NY Overlap 8am-9:25am",
+      "config": "Range classification, entry at 9:05",
+      "results": {
+        "oos_net": -2900,
+        "oos_pf": 1.14
+      },
+      "reason_failed": "Below PF threshold, unstable YoY",
+      "date": "2026-06-14"
+    },
+    {
+      "name": "London Pre-Market 3am-5am",
+      "config": "ORB at 3:00-3:15 ET, exit 5am",
+      "results": {
+        "best_oos_pf": 1.17,
+        "volume_pct_of_us": 0.042
+      },
+      "reason_failed": "Max OOS PF 1.17 across all configs. Volume 4.2% of US \u2192 4-10 tick live slippage.",
+      "date": "2026-06-14"
+    }
+  ],
+  "tested_hypotheses": [],
+  "confirmed_edges": [
+    {
+      "name": "NQ ORB Breakout v7",
+      "edge_type": "Opening Range Breakout \u2014 trend-following intraday",
+      "evidence": "OOS 2025-26: PF 2.14, WR 47.2%, 72 trades. Improving YoY. MC pass 93.2%.",
+      "parameters": {
+        "or_range": "55-110pt",
+        "breakout_buffer": "4pt",
+        "gap_filter": "20pt",
+        "stop": "30pt",
+        "target": "60pt (2R)",
+        "entry_window": "9:45-10:30 ET",
+        "skip_mondays": true,
+        "weak_months": [
+          6,
+          9,
+          12
+        ],
+        "strong_months": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          10,
+          11
+        ]
+      },
+      "oos_pf": 2.14,
+      "oos_wr": 0.472,
+      "oos_trades": 72,
+      "date": "2026-06-14"
+    },
+    {
+      "name": "Asia Gap Continuation (CME halt)",
+      "edge_type": "Gap continuation \u2014 overnight institutional positioning",
+      "evidence": "OOS 2024-26: PF 1.80, WR 56%, 77 trades. Improving YoY: 1.42\u21921.82\u21922.31.",
+      "parameters": {
+        "halt_gap_range": "30-80pt",
+        "entry_time": "18:15 ET",
+        "stop": "15pt",
+        "target": "22.5pt (1.5R)",
+        "hard_exit": "21:00 ET",
+        "skip_thursdays": true,
+        "weak_months": [
+          8,
+          11
+        ]
+      },
+      "oos_pf": 1.8,
+      "oos_wr": 0.56,
+      "oos_trades": 77,
+      "date": "2026-06-14"
+    }
+  ],
+  "config_history": [],
+  "data_quality_notes": [],
+  "hypotheses": [],
+  "tested": [
+    {
+      "id": "H12",
+      "name": "Tighter Stop 20pt (25pt fixed - 5pt buffer) with 3R target",
+      "description": "Reduce stop from 30pt to 20pt (25pt fixed, 0pt buffer). Keep 60pt target = 3R.",
+      "evidence": "Current 30pt stop loses $625/trade. 20pt stop loses $405. Better RR at 3.0.",
+      "expected_pf_delta": 0.05,
+      "expected_dd_delta": -0.02,
+      "confidence": 0.4,
+      "trade_count_effect": 0.0,
+      "config_overrides": {
+        "ORB_STOP_BUFFER_POINTS": 0.0,
+        "ORB_BREAKOUT_RR_TARGET": 3.0
+      },
+      "test_type": "config_patch",
+      "note": "Tighter stop = more stop-outs. Higher RR = larger wins. Net effect uncertain.",
+      "tested": true,
+      "test_date": "2026-06-14",
+      "result": {
+        "id": "H12",
+        "name": "Tighter Stop 20pt (25pt fixed - 5pt buffer) with 3R target",
+        "baseline_pf": 1.812,
+        "test_pf": 1.905,
+        "delta_pf": 0.093,
+        "baseline_wr": 0.441,
+        "test_wr": 0.343,
+        "delta_wr": -0.098,
+        "baseline_net": 66775.0,
+        "test_net": 71745.0,
+        "delta_net": 4970.0,
+        "baseline_n": 170,
+        "test_n": 169,
+        "trade_ratio": 0.994,
+        "delta_dd": 0.0,
+        "verdict": "KEEP"
+      }
+    },
+    {
+      "id": "H01",
+      "name": "High-Volume Exclusion Gate",
+      "description": "Exclude trades where OR volume ratio > 1.5x (spike bars are noise traps).",
+      "evidence": "Trade memory: vol_ratio 1.5x+ WR 27.3% (n=11). Very high vol = news/reversal.",
+      "expected_pf_delta": 0.06,
+      "expected_dd_delta": -0.02,
+      "confidence": 0.6,
+      "trade_count_effect": -0.04,
+      "config_overrides": {
+        "BREAKOUT_MIN_OR_VOLUME_RATIO": 0.0
+      },
+      "test_type": "config_patch",
+      "patch_fn": "patch_vol_ratio_ceiling",
+      "tested": true,
+      "test_date": "2026-06-14",
+      "result": {
+        "id": "H01",
+        "name": "High-Volume Exclusion Gate",
+        "baseline_pf": 1.812,
+        "test_pf": 1.812,
+        "delta_pf": 0.0,
+        "baseline_wr": 0.441,
+        "test_wr": 0.441,
+        "delta_wr": 0.0,
+        "baseline_net": 66775.0,
+        "test_net": 66775.0,
+        "delta_net": 0.0,
+        "baseline_n": 170,
+        "test_n": 170,
+        "trade_ratio": 1.0,
+        "delta_dd": 0.0,
+        "verdict": "REJECT"
+      }
+    },
+    {
+      "id": "H11",
+      "name": "Extended Pyramid Target (2.5R when pyramid fires)",
+      "description": "When pyramid fires at 1R, extend target from 2R to 2.5R to capture runners.",
+      "evidence": "Pyramid analysis: top 20% winners currently captured at 2R. Runners often go 3R+.",
+      "expected_pf_delta": 0.08,
+      "expected_dd_delta": 0.01,
+      "confidence": 0.45,
+      "trade_count_effect": 0.0,
+      "config_overrides": {
+        "ORB_BREAKOUT_RR_TARGET": 2.5
+      },
+      "test_type": "config_patch",
+      "note": "Tests 2.5R target. May be captured by individual winners only in pyramid trades.",
+      "tested": true,
+      "test_date": "2026-06-14",
+      "result": {
+        "id": "H11",
+        "name": "Extended Pyramid Target (2.5R when pyramid fires)",
+        "baseline_pf": 1.812,
+        "test_pf": 1.73,
+        "delta_pf": -0.082,
+        "baseline_wr": 0.441,
+        "test_wr": 0.388,
+        "delta_wr": -0.053,
+        "baseline_net": 66775.0,
+        "test_net": 54515.0,
+        "delta_net": -12260.0,
+        "baseline_n": 170,
+        "test_n": 134,
+        "trade_ratio": 0.788,
+        "delta_dd": 0.0,
+        "verdict": "REJECT"
+      }
+    },
+    {
+      "id": "H05",
+      "name": "Gap Dead Zone 45-55pt (tighter precision)",
+      "description": "The 40-60pt dead zone was unstable. Test tighter 45-55pt exclusion.",
+      "evidence": "Gap 40-60pt WR 32.5% (n=40). The outer bands (40-45, 55-60) may be acceptable.",
+      "expected_pf_delta": 0.04,
+      "expected_dd_delta": -0.01,
+      "confidence": 0.35,
+      "trade_count_effect": -0.04,
+      "config_overrides": {
+        "GAP_EXCLUDE_MIN": 45.0,
+        "GAP_EXCLUDE_MAX": 55.0
+      },
+      "test_type": "config_patch",
+      "tested": true,
+      "test_date": "2026-06-14",
+      "result": {
+        "id": "H05",
+        "name": "Gap Dead Zone 45-55pt (tighter precision)",
+        "baseline_pf": 1.812,
+        "test_pf": 1.68,
+        "delta_pf": -0.132,
+        "baseline_wr": 0.441,
+        "test_wr": 0.433,
+        "delta_wr": -0.008,
+        "baseline_net": 66775.0,
+        "test_net": 40555.0,
+        "delta_net": -26220.0,
+        "baseline_n": 170,
+        "test_n": 120,
+        "trade_ratio": 0.706,
+        "delta_dd": 0.0,
+        "verdict": "REJECT"
+      }
+    },
+    {
+      "id": "H04",
+      "name": "Volume Ratio Floor at 0.7x",
+      "description": "Skip trades where OR vol ratio < 0.7x (very low vol = low conviction).",
+      "evidence": "Vol <0.5x WR 45% (n=20 small). 0.5-0.75x WR 55.6% (n=9 too small). Floor tested at 0.8x: flat PF.",
+      "expected_pf_delta": 0.02,
+      "expected_dd_delta": -0.01,
+      "confidence": 0.3,
+      "trade_count_effect": -0.03,
+      "config_overrides": {
+        "BREAKOUT_MIN_OR_VOLUME_RATIO": 0.7
+      },
+      "test_type": "config_patch",
+      "tested": true,
+      "test_date": "2026-06-14",
+      "result": {
+        "id": "H04",
+        "name": "Volume Ratio Floor at 0.7x",
+        "baseline_pf": 1.812,
+        "test_pf": 1.654,
+        "delta_pf": -0.158,
+        "baseline_wr": 0.441,
+        "test_wr": 0.421,
+        "delta_wr": -0.02,
+        "baseline_net": 66775.0,
+        "test_net": 41490.0,
+        "delta_net": -25285.0,
+        "baseline_n": 170,
+        "test_n": 126,
+        "trade_ratio": 0.741,
+        "delta_dd": 0.0,
+        "verdict": "REJECT"
+      }
+    },
+    {
+      "id": "H09",
+      "name": "Add July to Strong Months",
+      "description": "July 2024 produced $7,130 (8/9 wins). Add to STRONG_MONTHS.",
+      "evidence": "Monthly returns: 2024-07: $7,130, 8/9 wins. Brain data: Jul WR 39.1% (n=23) \u2014 borderline.",
+      "expected_pf_delta": 0.03,
+      "expected_dd_delta": 0.0,
+      "confidence": 0.3,
+      "trade_count_effect": 0.0,
+      "config_overrides": {
+        "STRONG_MONTHS": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          7,
+          10,
+          11
+        ]
+      },
+      "test_type": "config_patch",
+      "note": "July 2024 was unusually strong. OOS July 2025/2026 data needed to confirm.",
+      "tested": true,
+      "test_date": "2026-06-14",
+      "result": {
+        "id": "H09",
+        "name": "Add July to Strong Months",
+        "baseline_pf": 1.812,
+        "test_pf": 1.799,
+        "delta_pf": -0.013,
+        "baseline_wr": 0.441,
+        "test_wr": 0.441,
+        "delta_wr": 0.0,
+        "baseline_net": 66775.0,
+        "test_net": 67270.0,
+        "delta_net": 495.0,
+        "baseline_n": 170,
+        "test_n": 170,
+        "trade_ratio": 1.0,
+        "delta_dd": 0.0,
+        "verdict": "REJECT"
+      }
+    },
+    {
+      "id": "H03",
+      "name": "OR Minimum 60pt (remove borderline 55-60pt)",
+      "description": "Raise OR_MIN from 55 to 60 to remove the weakest ORs.",
+      "evidence": "OR size 55-65pt WR 42% (marginal). Sensitivity: +15% (55->63) drops PF 0.33 (FRAGILE).",
+      "expected_pf_delta": 0.03,
+      "expected_dd_delta": -0.01,
+      "confidence": 0.35,
+      "trade_count_effect": -0.05,
+      "config_overrides": {
+        "ORB_MIN_RANGE_POINTS": 60.0
+      },
+      "test_type": "config_patch",
+      "tested": true,
+      "test_date": "2026-06-14",
+      "result": {
+        "id": "H03",
+        "name": "OR Minimum 60pt (remove borderline 55-60pt)",
+        "baseline_pf": 1.812,
+        "test_pf": 1.699,
+        "delta_pf": -0.113,
+        "baseline_wr": 0.441,
+        "test_wr": 0.423,
+        "delta_wr": -0.018,
+        "baseline_net": 66775.0,
+        "test_net": 55275.0,
+        "delta_net": -11500.0,
+        "baseline_n": 170,
+        "test_n": 156,
+        "trade_ratio": 0.918,
+        "delta_dd": 0.0,
+        "verdict": "REJECT"
+      }
+    },
+    {
+      "id": "H13",
+      "name": "Second Breakout Re-Entry (after target hit)",
+      "description": "Enable SECOND_BREAKOUT_ENABLED: re-enter if price breaks again after 10:30.",
+      "evidence": "Feature exists but was never tested. Could capture extended trend days.",
+      "expected_pf_delta": 0.05,
+      "expected_dd_delta": 0.01,
+      "confidence": 0.35,
+      "trade_count_effect": 0.1,
+      "config_overrides": {
+        "SECOND_BREAKOUT_ENABLED": true
+      },
+      "test_type": "config_patch",
+      "tested": true,
+      "test_date": "2026-06-14",
+      "result": {
+        "id": "H13",
+        "name": "Second Breakout Re-Entry (after target hit)",
+        "baseline_pf": 1.812,
+        "test_pf": 1.722,
+        "delta_pf": -0.09,
+        "baseline_wr": 0.441,
+        "test_wr": 0.431,
+        "delta_wr": -0.01,
+        "baseline_net": 66775.0,
+        "test_net": 66635.0,
+        "delta_net": -140.0,
+        "baseline_n": 170,
+        "test_n": 188,
+        "trade_ratio": 1.106,
+        "delta_dd": 0.0,
+        "verdict": "REJECT"
+      }
+    },
+    {
+      "id": "H07",
+      "name": "ATR-Adaptive OR Max Filter",
+      "description": "Adjust OR_MAX dynamically: if rolling ATR > 200pt, allow OR up to 130pt.",
+      "evidence": "April 2025 (tariff shock) had ATR 350pt+; OR_MAX=110 filtered ALL 25 days.",
+      "expected_pf_delta": -0.02,
+      "expected_dd_delta": 0.01,
+      "confidence": 0.4,
+      "trade_count_effect": 0.05,
+      "config_overrides": {
+        "ORB_MAX_RANGE_POINTS": 130.0
+      },
+      "test_type": "config_patch",
+      "note": "Tests static OR_MAX=130 as a proxy for dynamic ATR-based ceiling.",
+      "tested": true,
+      "test_date": "2026-06-14",
+      "result": {
+        "id": "H07",
+        "name": "ATR-Adaptive OR Max Filter",
+        "baseline_pf": 1.812,
+        "test_pf": 1.816,
+        "delta_pf": 0.004,
+        "baseline_wr": 0.441,
+        "test_wr": 0.435,
+        "delta_wr": -0.006,
+        "baseline_net": 66775.0,
+        "test_net": 62490.0,
+        "delta_net": -4285.0,
+        "baseline_n": 170,
+        "test_n": 154,
+        "trade_ratio": 0.906,
+        "delta_dd": 0.0,
+        "verdict": "MARGINAL"
+      }
+    },
+    {
+      "id": "H02",
+      "name": "Entry Cutoff at 10:15 ET",
+      "description": "Tighten LAST_ENTRY_TIME from 10:30 to 10:15 (10:15-10:30 marginal).",
+      "evidence": "Entry time sweep: 10:15 PF 1.97 vs 10:30 PF 2.14. Difference is 2025 vs 2026 distribution.",
+      "expected_pf_delta": -0.05,
+      "expected_dd_delta": -0.01,
+      "confidence": 0.4,
+      "trade_count_effect": -0.08,
+      "config_overrides": {
+        "LAST_ENTRY_TIME": "10:15"
+      },
+      "test_type": "config_patch",
+      "tested": true,
+      "test_date": "2026-06-14",
+      "result": {
+        "id": "H02",
+        "name": "Entry Cutoff at 10:15 ET",
+        "baseline_pf": 1.812,
+        "test_pf": 1.812,
+        "delta_pf": 0.0,
+        "baseline_wr": 0.441,
+        "test_wr": 0.441,
+        "delta_wr": 0.0,
+        "baseline_net": 66775.0,
+        "test_net": 66775.0,
+        "delta_net": 0.0,
+        "baseline_n": 170,
+        "test_n": 170,
+        "trade_ratio": 1.0,
+        "delta_dd": 0.0,
+        "verdict": "REJECT"
+      }
+    }
+  ],
+  "failed": [
+    {
+      "id": "H01",
+      "name": "High-Volume Exclusion Gate",
+      "reason": "OOS delta_PF=0.000",
+      "date": "2026-06-14"
+    },
+    {
+      "id": "H05",
+      "name": "Gap Dead Zone 45-55pt (tighter precision)",
+      "reason": "OOS delta_PF=-0.312",
+      "date": "2026-06-14"
+    },
+    {
+      "id": "H04",
+      "name": "Volume Ratio Floor at 0.7x",
+      "reason": "OOS delta_PF=-0.176",
+      "date": "2026-06-14"
+    },
+    {
+      "id": "H03",
+      "name": "OR Minimum 60pt (remove borderline 55-60pt)",
+      "reason": "OOS delta_PF=-0.141",
+      "date": "2026-06-14"
+    },
+    {
+      "id": "H13",
+      "name": "Second Breakout Re-Entry (after target hit)",
+      "reason": "OOS delta_PF=-0.342",
+      "date": "2026-06-14"
+    },
+    {
+      "id": "H07",
+      "name": "ATR-Adaptive OR Max Filter",
+      "reason": "OOS delta_PF=-0.095",
+      "date": "2026-06-14"
+    },
+    {
+      "id": "H02",
+      "name": "Entry Cutoff at 10:15 ET",
+      "reason": "OOS delta_PF=0.000",
+      "date": "2026-06-14"
+    },
+    {
+      "id": "H11",
+      "name": "Extended Pyramid Target (2.5R when pyramid fires)",
+      "reason": "OOS delta_PF=-0.082",
+      "date": "2026-06-14"
+    },
+    {
+      "id": "H09",
+      "name": "Add July to Strong Months",
+      "reason": "OOS delta_PF=-0.013",
+      "date": "2026-06-14"
+    }
+  ]
+}

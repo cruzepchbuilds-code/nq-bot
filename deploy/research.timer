@@ -1,0 +1,11 @@
+[Unit]
+Description=Run overnight research at 10 PM ET nightly
+
+[Timer]
+# 10:00 PM Eastern = 02:00 UTC (EST) or 03:00 UTC (EDT)
+# Set to 03:00 UTC — covers both EST/EDT without DST logic
+OnCalendar=*-*-* 03:00:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target
