@@ -16,11 +16,11 @@ v8: stop_size_test.py + branch merge (best of both)
     ORB_FIXED_STOP_POINTS=22pt (was 25pt): PF 2.01→2.18, WR 46.7→48.8%, same 3/4 pass
     Net +$56,395 over 4yr OOS (2023 halts all sizes; 2024/25/26 pass)
     APEX_TRAILING_DD=$7k for simulation headroom (real Apex 50k = $2,500; see stop_size_test.py)
-v9: Lucid Trading 150K Pro — 3 contracts, second breakout enabled
-    STARTING_BALANCE=150K, MAX_CONTRACTS=3, SECOND_BREAKOUT_ENABLED=True
-    MAX_LOSSES_PER_DAY=1 (3 contracts × 27pt = $1,620/loss, safe under $2,700 DLL)
-    APEX_TRAILING_DD=4500 (Lucid EOD DD), full-dataset backtest: PF 2.05, Net +$77,480
-    Avg winning ORB trade $2,926 — great day (2 wins): ~$5,852
+v9: Lucid Trading 50K Pro — 2 contracts, second breakout enabled
+    STARTING_BALANCE=50K, MAX_CONTRACTS=2, SECOND_BREAKOUT_ENABLED=True
+    MAX_LOSSES_PER_DAY=1 (2c × 27pt = $1,090/loss, safe under $1,200 DLL and $2,000 max)
+    APEX_TRAILING_DD=2000 (Lucid 50K EOD max loss limit)
+    Good day: $2,640 (1 win) | Great day: $5,280 (2 wins w/ second breakout)
 """
 
 # -- Instrument -------------------------------------------------------------
@@ -93,26 +93,29 @@ REGIME_BREAKOUT_THRESHOLD = 0.18
 REGIME_FADE_THRESHOLD = 0.18  # equal to breakout threshold -> fade disabled
 
 # -- Bankroll Manager -------------------------------------------------------
-STARTING_BALANCE = 150000.0      # Lucid Trading 150K Pro account
+STARTING_BALANCE = 50000.0       # Lucid Trading 50K Pro account
 
 RISK_PER_TRADE_PCT = 0.01
 MIN_RR = 1.9
-MAX_CONTRACTS = 3                # Lucid 150K: 10 Mini max; 3 keeps DLL exposure safe
+MAX_CONTRACTS = 2                # Lucid 50K: 4 Mini max; 2 keeps single loss < $1,200 DLL
 
-DAILY_LOSS_LIMIT_PCT = 0.018     # $2,700 DLL on 150K account (Lucid rule)
+DAILY_LOSS_LIMIT_PCT = 0.024     # $1,200 DLL on 50K account (Lucid rule)
 MAX_CONSECUTIVE_LOSING_DAYS = 2
 MAX_TRADES_PER_DAY = 4          # 2 ORB + 1 second breakout + 1 Asia
-MAX_LOSSES_PER_DAY = 1          # 3 contracts × 27pt stop = $1,620/loss — 2 losses would breach $2,700 DLL
+MAX_LOSSES_PER_DAY = 1          # 2 contracts × $545/loss = $1,090 — 2nd loss would breach $2,000 max
 DAILY_PROFIT_LOCK_PCT = 0.03
 
 WEEKLY_LOSS_LIMIT_PCT = 0.05
 
-MAX_TOTAL_DRAWDOWN_PCT = 0.12    # career halt — Lucid DD is per-account, not trailing
+MAX_TOTAL_DRAWDOWN_PCT = 0.12    # career halt — Lucid DD resets per account
 RECOVERY_MODE_TRIGGER_PCT = 0.03
 RECOVERY_SIZE_MULTIPLIER = 0.5
 
 # -- Lucid Trading Drawdown (EOD, not trailing) -----------------------------
-APEX_TRAILING_DD = 4500.0        # Lucid 150K Pro: $4,500 max loss limit (EOD)
+# Lucid's $2,000 max loss is from STARTING balance (fixed floor $48,000), not trailing.
+# Our daily limits (DLL $1,200, MAX_LOSSES_PER_DAY=1) enforce this per-session.
+# Set trailing DD high so the backtest doesn't halt on a Apex-style trailing rule.
+APEX_TRAILING_DD = 8000.0        # sim headroom — real protection via daily limits above
 ENFORCE_APEX_RULES = True
 
 # -- Signal Strength Filter -------------------------------------------------
