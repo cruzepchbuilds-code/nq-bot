@@ -37,7 +37,7 @@ from strategies.strategy_us import Signal
 PM_OR_START   = time(13, 0)
 PM_OR_END     = time(13, 14)   # last minute included in OR (13:00-13:14 = 15 bars)
 PM_OR_DONE    = time(13, 15)   # first possible entry bar
-PM_ENTRY_END  = time(14, 15)   # last entry bar (no entries after 14:15)
+PM_ENTRY_END  = time(14, 0)    # last entry bar — 14:00 beats 14:15 in sweep (PF 1.368 vs 1.337)
 PM_FLATTEN    = time(15, 55)   # hard exit same as morning session
 
 

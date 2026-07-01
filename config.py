@@ -90,7 +90,7 @@ PM_VWAP_TOLERANCE = 5.0
 #   DOW: Mon PF=0.92 / Fri PF=0.97 → skip both (same as morning session)
 PM_ORB_ENABLED                = True
 PM_ORB_MIN_RANGE_POINTS       = 15.0   # tight consolidation only
-PM_ORB_MAX_RANGE_POINTS       = 50.0   # afternoon OR rarely exceeds 50pt
+PM_ORB_MAX_RANGE_POINTS       = 60.0   # widened from 50: adds 24 trades, OOS PF 1.368 vs 1.337
 PM_ORB_FIXED_STOP_POINTS      = 22.0   # same as morning (familiar risk: $440/trade)
 PM_ORB_BREAKOUT_BUFFER_POINTS = 2.0    # close must exceed OR edge by 2pt
 PM_ORB_RR_TARGET              = 2.0    # 2R = 44pt target — best net in sweep

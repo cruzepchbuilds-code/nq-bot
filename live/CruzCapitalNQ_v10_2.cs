@@ -57,7 +57,7 @@ namespace NinjaTrader.NinjaScript.Strategies
         // PM ORB constants (afternoon 1:00-2:15 session — v10.2 research)
         private const double PM_STOP    = 22.0;   // same risk as morning: $440/trade
         private const double PM_MIN_OR  = 15.0;   // tight post-lunch consolidation
-        private const double PM_MAX_OR  = 50.0;   // afternoon OR rarely exceeds 50pt
+        private const double PM_MAX_OR  = 60.0;   // widened: 15-60pt adds 24 trades, PF 1.368 vs 1.337
         private const double PM_RR      = 2.0;    // 2R = 44pt target
         private const double PM_BRK_BUF = 2.0;   // tighter breakout filter than morning
 
@@ -266,7 +266,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 
             // ── PM ORB entry (13:15-14:15) — runs independently of morning validity ──
             if (PmOrbEnabled && pmOrBuilt && ts >= new TimeSpan(13, 15, 0)
-                    && ts <= new TimeSpan(14, 15, 0) && !pmTraded && !inPos)
+                    && ts <= new TimeSpan(14, 0, 0) && !pmTraded && !inPos)
             {
                 TryPMEntry(ts, month, dow);
                 return;
