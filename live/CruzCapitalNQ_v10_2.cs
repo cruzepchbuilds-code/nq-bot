@@ -268,7 +268,7 @@ namespace NinjaTrader.NinjaScript.Strategies
             if (PmOrbEnabled && pmOrBuilt && ts >= new TimeSpan(13, 15, 0)
                     && ts <= new TimeSpan(14, 15, 0) && !pmTraded && !inPos)
             {
-                TryPMEntry(ts, month);
+                TryPMEntry(ts, month, dow);
                 return;
             }
 
@@ -302,18 +302,12 @@ namespace NinjaTrader.NinjaScript.Strategies
             bool goShort = close < orLo - BRK_BUF;
             if (!goLong && !goShort) return;
 
-            double score = CalcScore(goLong, ts, month);
-            if (score < SIG_MIN) return;
-
-            // Hard skip in weak months unless strong month overrides
-            if (WEAK.Contains(month) && !STRONG.Contains(month)) return;
-
             double rr      = EvalMode ? EVAL_RR : FUNDED_RR;
             double effStop = STOP_PT + STOP_BUF; // 27pt from entry
             int    qty     = 1;
 
             // Scale to 2c only after $1,500 profit cushion (protects Lucid $2k DD floor)
-            if (!EvalMode && lifetimePnL >= SCALE_GATE && STRONG.Contains(month) && score >= 80) qty = 2;
+            if (!EvalMode && lifetimePnL >= SCALE_GATE) qty = 2;
 
             // ── First-bar hard gate: skip 9:45 entry (OOS PF 0.839 even at score≥3) ─
             if (ts < new TimeSpan(9, 46, 0)) return;
@@ -412,8 +406,10 @@ namespace NinjaTrader.NinjaScript.Strategies
         }
 
         // ── PM ORB Entry (1:15-2:15, no confidence score — baseline works) ──
-        private void TryPMEntry(TimeSpan ts, int month)
+        private void TryPMEntry(TimeSpan ts, int month, int dow)
         {
+            if (SkipMondays && dow == 1) return;  // Mon PM PF=0.92 OOS
+            if (SkipFridays && dow == 5) return;  // Fri PM PF=0.97 OOS
             if (dailyPnL <= -DLL) return;
 
             double pmRange = pmOrHi - pmOrLo;
