@@ -1,12 +1,12 @@
-// CruzCapitalNQ.cs — NinjaTrader 8 Strategy
-// Port of the Python ORB bot (v10) for Lucid Trading 50K Direct account
+// CruzCapitalNQ_v10_2.cs — NinjaTrader 8 Strategy
+// Port of the Python ORB bot (v10.2) for Lucid Trading 50K Direct account
 //
 // HOW TO INSTALL:
 //   1. Copy this file to:
-//      C:\Users\<you>\Documents\NinjaTrader 8\bin\Custom\Strategies\CruzCapitalNQ.cs
+//      C:\Users\<you>\Documents\NinjaTrader 8\bin\Custom\Strategies\CruzCapitalNQ_v10_2.cs
 //   2. In NT8 desktop: New → NinjaScript Editor → Compile All (F5)
 //   3. On an NQ Continuous (#F) 1-minute chart:
-//      Strategies panel → Add → CruzCapitalNQ
+//      Strategies panel → Add → CruzCapitalNQ_v10_2
 //   4. Set Account = your Lucid account, enable "Automated" trading
 //   5. Leave NT8 running 24/7 on the VPS
 //
@@ -33,7 +33,7 @@ using NinjaTrader.NinjaScript.DrawingTools;
 
 namespace NinjaTrader.NinjaScript.Strategies
 {
-    public class CruzCapitalNQ : Strategy
+    public class CruzCapitalNQ_v10_2 : Strategy
     {
         // ── Hard-coded parameters (match config.py exactly) ────────────────
         private const double STOP_PT      = 22.0;   // fixed stop distance
@@ -128,7 +128,7 @@ namespace NinjaTrader.NinjaScript.Strategies
             if (State == State.SetDefaults)
             {
                 Description  = "CruzCapital NQ ORB v10";
-                Name         = "CruzCapitalNQ";
+                Name         = "CruzCapitalNQ v10.2";
                 Calculate    = Calculate.OnBarClose;
                 EntriesPerDirection        = 2; // allow pyramid add-on
                 EntryHandling              = EntryHandling.AllEntries;
