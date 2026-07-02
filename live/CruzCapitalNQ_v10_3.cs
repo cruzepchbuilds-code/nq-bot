@@ -94,7 +94,9 @@ namespace NinjaTrader.NinjaScript.Strategies
         private static readonly HashSet<int> ASIA_WK = new HashSet<int> { 8, 11 };
 
         // ── Account / risk ─────────────────────────────────────────────────
-        private const double DLL        = 1200.0;  // daily loss limit
+        private const double DLL        = 900.0;   // internal DLL — Lucid enforces $1,200 but
+                                                   // morning(-$540)+PM(-$440)=-$980 before Asia
+                                                   // fires, so set below $980 to block Asia
         private const double SCALE_GATE = 1500.0;  // lifetime profit before 2c
         private const int    MAX_CON    = 2;
         private const int    PYR_WARMUP = 5;
