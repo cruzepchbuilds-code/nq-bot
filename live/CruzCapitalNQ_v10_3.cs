@@ -105,8 +105,9 @@ namespace NinjaTrader.NinjaScript.Strategies
         [NinjaScriptProperty] public bool PyramidEnabled       { get; set; }
         [NinjaScriptProperty] public bool SecondBreakoutEnabled { get; set; }
         [NinjaScriptProperty] public bool SkipMondays          { get; set; }
-        [NinjaScriptProperty] public bool SkipFridays          { get; set; }
+        [NinjaScriptProperty] public bool SkipFridays          { get; set; }  // morning ORB: Fri OOS PF 1.21 (net +, enable for max profit)
         [NinjaScriptProperty] public bool PmOrbEnabled         { get; set; }
+        [NinjaScriptProperty] public bool PmSkipFridays        { get; set; }  // PM ORB: Fri OOS PF 0.97 (net -, keep true)
 
         // ── Morning OR state ───────────────────────────────────────────────
         private double orHi, orLo;
@@ -164,8 +165,9 @@ namespace NinjaTrader.NinjaScript.Strategies
                 PyramidEnabled        = true;
                 SecondBreakoutEnabled = true;
                 SkipMondays           = true;
-                SkipFridays           = true;
+                SkipFridays           = false;  // Fri morning OOS PF 1.21 — net positive, leave ON
                 PmOrbEnabled          = true;
+                PmSkipFridays         = true;   // Fri PM OOS PF 0.97 — net negative, always skip
             }
             else if (State == State.Configure)
             {
@@ -351,8 +353,8 @@ namespace NinjaTrader.NinjaScript.Strategies
         // ── PM ORB entry (13:15-14:00) ────────────────────────────────────
         private void TryPMEntry(int month, int dow)
         {
-            if (SkipMondays && dow == 1) return;  // Mon PM OOS PF 0.92
-            if (SkipFridays && dow == 5) return;  // Fri PM OOS PF 0.97
+            if (SkipMondays   && dow == 1) return;  // Mon PM OOS PF 0.92
+            if (PmSkipFridays && dow == 5) return;  // Fri PM OOS PF 0.97 — separate from morning
             if (dailyPnL <= -DLL) return;
 
             double pmRange = pmOrHi - pmOrLo;
