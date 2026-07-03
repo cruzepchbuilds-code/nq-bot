@@ -73,6 +73,9 @@ class ORBStrategy:
         # Skip Mondays — ORB historically weakest
         if config.SKIP_MONDAYS and self.day_of_week == 0:
             return False
+        # Skip Fridays — OOS PF 1.21 vs 4.0+ other days (v10.2 research)
+        if getattr(config, "SKIP_FRIDAYS", False) and self.day_of_week == 4:
+            return False
         return True
 
     @property

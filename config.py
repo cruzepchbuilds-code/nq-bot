@@ -93,7 +93,7 @@ PM_ORB_MIN_RANGE_POINTS       = 15.0   # tight consolidation only
 PM_ORB_MAX_RANGE_POINTS       = 60.0   # widened from 50: adds 24 trades, OOS PF 1.368 vs 1.337
 PM_ORB_FIXED_STOP_POINTS      = 22.0   # same as morning (familiar risk: $440/trade)
 PM_ORB_BREAKOUT_BUFFER_POINTS = 2.0    # close must exceed OR edge by 2pt
-PM_ORB_RR_TARGET              = 2.0    # 2R = 44pt target — best net in sweep
+PM_ORB_RR_TARGET              = 2.5    # 2.5R = 55pt — stop×RR sweep (2026-07-02): beats 2R on IS PF 1.24v1.16, OOS PF 1.36v1.35, OOS +$1,520
 PM_ORB_MAX_CONTRACTS          = 1      # eval: always 1c; funded: set to MAX_CONTRACTS
 
 # -- Gap Fill (large gap days, fade toward prior close) --------------------
@@ -251,8 +251,8 @@ ASIA_MAX_CONTRACTS      = 2       # v10: 2c (was 1c) — +$6,355 net over 4yr OO
                                   # Risk: 15pt × $20 × 2c + comm ≈ $620/loss (< $1,200 DLL)
 ASIA_GAP_MIN_POINTS     = 30.0    # skip if abs(halt_gap) < this
 ASIA_GAP_MAX_POINTS     = 80.0    # skip if abs(halt_gap) > this (noise/news)
-ASIA_STOP_POINTS        = 15.0    # fixed stop distance in NQ points
-ASIA_RR_TARGET          = 1.5     # target = stop × RR (22.5pt target at 15pt stop)
+ASIA_STOP_POINTS        = 25.0    # sweep 2026-07-02: 15pt was IS PF 0.92 (too tight for overnight vol); 25pt IS 1.24
+ASIA_RR_TARGET          = 3.0     # 75pt target — OOS $8,708 vs $5,033 at old 15/1.5 (multi_probe.py P1)
 ASIA_SKIP_THURSDAYS     = True    # Thu OOS PF 0.82 — worst DOW, skip
 # Month filters (independent of US session STRONG/WEAK_MONTHS)
 ASIA_WEAK_MONTHS        = [8, 11]           # Aug PF 0.71, Nov PF 0.33 — always skip

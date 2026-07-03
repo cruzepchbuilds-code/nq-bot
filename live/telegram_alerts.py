@@ -197,6 +197,62 @@ def send_research_summary(date, tested: int, passed: int,
     return send(text)
 
 
+# ── Eval mode ────────────────────────────────────────────────────────────────
+
+def send_eval_passed(symbol: str, profit: float, target: float,
+                     trades: int, days: int) -> bool:
+    wr_str = ""
+    text = (
+        f"🏆 <b>EVAL PASSED — {symbol}</b>\n"
+        f"Profit   <b>+${profit:,.0f}</b>  (target +${target:,.0f})\n"
+        f"Trades   {trades}  |  Trading days: {days}\n"
+        f"\n"
+        f"<b>STOP TRADING NOW.</b>\n"
+        f"Notify Lucid Trading to activate funded account."
+    )
+    return send(text)
+
+
+def send_eval_failed(symbol: str, balance: float, floor: float) -> bool:
+    text = (
+        f"🚨 <b>EVAL FAILED — {symbol}</b>\n"
+        f"Balance  ${balance:,.0f}  |  Floor  ${floor:,.0f}\n"
+        f"Max loss exceeded — trading halted.\n"
+        f"Purchase a new eval to continue."
+    )
+    return send(text)
+
+
+def send_eval_morning(symbol: str, day_num: int, profit: float,
+                      target: float, avg_per_day: float,
+                      est_days_left: int, floor_headroom: float) -> bool:
+    pct    = min(profit / target * 100, 100.0) if target else 0
+    bar_n  = int(pct / 10)
+    bar    = "█" * bar_n + "░" * (10 - bar_n)
+    at_risk = floor_headroom < 1000
+    warn   = "  ⚠️ LOW FLOOR HEADROOM" if at_risk else ""
+    text = (
+        f"📊 <b>Eval Day {day_num} — {symbol}</b>\n"
+        f"[{bar}] {pct:.0f}%\n"
+        f"Earned   <b>+${profit:,.0f}</b> / ${target:,.0f}\n"
+        f"Remain   ${target - profit:,.0f}\n"
+        f"Avg/day  ${avg_per_day:,.0f}  →  ~{est_days_left} days left\n"
+        f"Floor    ${floor_headroom:,.0f} headroom{warn}"
+    )
+    return send(text)
+
+
+def send_eval_at_risk(symbol: str, balance: float, floor: float,
+                      headroom: float) -> bool:
+    text = (
+        f"⚠️ <b>EVAL AT RISK — {symbol}</b>\n"
+        f"Balance  ${balance:,.0f}\n"
+        f"Floor    ${floor:,.0f}  (headroom: ${headroom:,.0f})\n"
+        f"Trade 1c only — do not lose another full trade today."
+    )
+    return send(text)
+
+
 # ── Backward compat: old call sites use send_alert() ─────────────────────────
 
 def send_alert(direction, entry, stop, target, score, contracts, timestamp,

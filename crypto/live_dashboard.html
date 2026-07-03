@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="refresh" content="30">
+<title>CruzCapital Crypto — Live Paper Trading</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #1a1a2e; color: #eee;
+         margin: 0; padding: 20px; }
+  h1 { color: #00d4ff; border-bottom: 2px solid #00d4ff; padding-bottom: 10px; }
+  h2 { color: #00d4ff; margin-top: 30px; }
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin: 20px 0; }
+  .stat { background: #16213e; border-left: 4px solid #00d4ff; padding: 14px 18px; border-radius: 4px; }
+  .stat.green { border-left-color: #2ecc71; }
+  .stat.red   { border-left-color: #e74c3c; }
+  .stat.amber { border-left-color: #f39c12; }
+  .stat-value { font-size: 1.6em; font-weight: bold; color: #00d4ff; }
+  .stat-value.green { color: #2ecc71; }
+  .stat-value.red   { color: #e74c3c; }
+  .stat-value.amber { color: #f39c12; }
+  .stat-label { font-size: 0.85em; color: #aaa; margin-top: 4px; }
+  .chart-box { background: #16213e; border-radius: 6px; padding: 20px; margin-bottom: 20px; }
+  table { border-collapse: collapse; width: 100%; }
+  th { background: #16213e; color: #00d4ff; padding: 10px 14px; text-align: left; }
+  td { padding: 9px 14px; border-bottom: 1px solid #2a2a4a; font-size: 0.92em; }
+  tr:hover { background: #16213e; }
+  .win  { color: #2ecc71; }
+  .loss { color: #e74c3c; }
+  .badge { display: inline-block; border-radius: 3px; padding: 2px 8px;
+           font-size: 0.82em; font-weight: bold; }
+  .badge.live { background: #0d3d27; color: #2ecc71; }
+  .badge.paper { background: #1e3a5f; color: #00d4ff; }
+  .refresh { color: #666; font-size: 0.8em; }
+</style>
+</head>
+<body>
+
+<h1>CruzCapital Crypto — Paper Trading
+  <span class="badge paper">PAPER MODE</span>
+  <span class="refresh">auto-refresh 30s</span>
+</h1>
+<p style="color:#aaa" id="meta-line">Loading trade log…</p>
+
+<!-- Stats -->
+<div class="stat-grid">
+  <div class="stat green" id="card-pnl">
+    <div class="stat-value green" id="val-pnl">$—</div>
+    <div class="stat-label">Lifetime Net P&amp;L</div>
+  </div>
+  <div class="stat" id="card-wr">
+    <div class="stat-value" id="val-wr">—</div>
+    <div class="stat-label">Win Rate</div>
+  </div>
+  <div class="stat" id="card-pf">
+    <div class="stat-value" id="val-pf">—</div>
+    <div class="stat-label">Profit Factor</div>
+  </div>
+  <div class="stat amber" id="card-n">
+    <div class="stat-value amber" id="val-n">—</div>
+    <div class="stat-label">Total Trades</div>
+  </div>
+</div>
+
+<!-- Equity Curve -->
+<div class="chart-box">
+  <h2 style="margin-top:0">Equity Curve</h2>
+  <canvas id="equityChart" height="60"></canvas>
+</div>
+
+<!-- Trade Log -->
+<h2>Trade Log</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Date / Time</th><th>Strategy</th><th>Dir</th>
+      <th>Entry</th><th>Exit</th><th>Net $</th><th>Outcome</th><th>Lifetime</th>
+    </tr>
+  </thead>
+  <tbody id="trade-log"></tbody>
+</table>
+
+<script>
+// ── Parse the CSV from paper_trades.csv ──────────────────────────────────────
+// Since this is a local file, the server (paper_trade.py or a simple http.server)
+// must serve it. Run: python -m http.server 8080 from project root
+// Then open: http://localhost:8080/crypto/live_dashboard.html
+
+async function loadTrades() {
+  try {
+    const resp = await fetch("data/paper_trades.csv?" + Date.now());
+    if (!resp.ok) return null;
+    const text = await resp.text();
+    const lines = text.trim().split("\n");
+    if (lines.length < 2) return [];
+    const headers = lines[0].split(",");
+    return lines.slice(1).map(line => {
+      const vals = line.split(",");
+      const obj = {};
+      headers.forEach((h, i) => obj[h.trim()] = vals[i]?.trim());
+      return obj;
+    });
+  } catch (e) {
+    return null;
+  }
+}
+
+function pf(trades) {
+  const wins = trades.filter(t => parseFloat(t.net_usd) > 0);
+  const gw = wins.reduce((s, t) => s + parseFloat(t.net_usd), 0);
+  const gl = trades.filter(t => parseFloat(t.net_usd) <= 0)
+                   .reduce((s, t) => s + Math.abs(parseFloat(t.net_usd)), 0);
+  return gl > 0 ? gw / gl : 99;
+}
+
+let equityChart = null;
+
+async function render() {
+  const trades = await loadTrades();
+
+  if (trades === null) {
+    document.getElementById("meta-line").textContent =
+      "⚠ Could not load trade log. Run: python -m http.server 8080 from project root, " +
+      "then open http://localhost:8080/crypto/live_dashboard.html";
+    return;
+  }
+
+  if (trades.length === 0) {
+    document.getElementById("meta-line").textContent =
+      "No trades yet — paper_trade.py is running. Waiting for first signal.";
+    return;
+  }
+
+  const last = trades[trades.length - 1];
+  const lifetime = parseFloat(last.lifetime_pnl);
+  const wins = trades.filter(t => parseFloat(t.net_usd) > 0);
+  const wr = wins.length / trades.length;
+  const profitFactor = pf(trades);
+
+  document.getElementById("meta-line").textContent =
+    `Strategy: ${last.strategy}  ·  Last trade: ${last.timestamp}  ·  ${trades.length} total trades`;
+
+  // Stats cards
+  document.getElementById("val-pnl").textContent =
+    (lifetime >= 0 ? "+" : "") + "$" + lifetime.toLocaleString("en-US", {minimumFractionDigits: 0, maximumFractionDigits: 0});
+  const pnlCard = document.getElementById("card-pnl");
+  pnlCard.className = "stat " + (lifetime >= 0 ? "green" : "red");
+  document.getElementById("val-pnl").className = "stat-value " + (lifetime >= 0 ? "green" : "red");
+
+  document.getElementById("val-wr").textContent = (wr * 100).toFixed(0) + "%";
+  document.getElementById("val-pf").textContent = profitFactor.toFixed(2);
+  document.getElementById("val-n").textContent = trades.length;
+
+  // Equity curve
+  const labels = trades.map(t => t.timestamp.split(" ")[0]);
+  const values = trades.map(t => parseFloat(t.lifetime_pnl));
+  const ptColors = values.map(v => v >= 0 ? "#2ecc71" : "#e74c3c");
+
+  const ctx = document.getElementById("equityChart").getContext("2d");
+  if (equityChart) equityChart.destroy();
+  equityChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        borderColor: "#00d4ff",
+        backgroundColor: (ctx) => {
+          const chart = ctx.chart;
+          const {ctx: c, chartArea} = chart;
+          if (!chartArea) return "#00d4ff22";
+          const gradient = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+          gradient.addColorStop(0, "#00d4ff33");
+          gradient.addColorStop(1, "#00d4ff00");
+          return gradient;
+        },
+        borderWidth: 2,
+        pointRadius: 3,
+        pointBackgroundColor: ptColors,
+        tension: 0.2,
+        fill: true,
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` $${ctx.parsed.y.toLocaleString()}`,
+          },
+        },
+      },
+      scales: {
+        x: { ticks: { color: "#aaa", maxTicksLimit: 20 }, grid: { color: "#2a2a4a" } },
+        y: {
+          ticks: { color: "#aaa", callback: v => "$" + v.toLocaleString() },
+          grid: { color: "#2a2a4a" },
+        },
+      },
+    },
+  });
+
+  // Trade log (newest first)
+  const tbody = document.getElementById("trade-log");
+  tbody.innerHTML = [...trades].reverse().map(t => {
+    const net = parseFloat(t.net_usd);
+    const cls = net >= 0 ? "win" : "loss";
+    const sign = net >= 0 ? "+" : "";
+    return `<tr>
+      <td>${t.timestamp}</td>
+      <td>${t.strategy}</td>
+      <td>${t.direction}</td>
+      <td>$${parseFloat(t.entry).toLocaleString()}</td>
+      <td>$${parseFloat(t.exit).toLocaleString()}</td>
+      <td class="${cls}">${sign}$${Math.abs(net).toFixed(0)}</td>
+      <td>${t.outcome}</td>
+      <td class="${parseFloat(t.lifetime_pnl) >= 0 ? 'win' : 'loss'}">
+        ${parseFloat(t.lifetime_pnl) >= 0 ? "+" : ""}$${parseFloat(t.lifetime_pnl).toFixed(0)}
+      </td>
+    </tr>`;
+  }).join("");
+}
+
+render();
+</script>
+</body>
+</html>

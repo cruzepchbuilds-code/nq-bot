@@ -35,6 +35,7 @@ SKIP_MONDAYS = True             # keep Mon skip (no ES-specific Mon research yet
 # -- ORB Strategy -----------------------------------------------------------
 ORB_RR_TARGET = 2.0
 ORB_BREAKOUT_RR_TARGET = 2.0    # 2.0x optimal for ES (1.5x and 2.5x tested, both worse)
+ORB_FUNDED_RR_TARGET = 2.0      # same for funded — 2.0x is optimal at all equity sizes
 ORB_STOP_MODE = "fixed"
 ORB_FIXED_STOP_POINTS = 7.0     # ES: 7pt stop (0.14% of ~5000 price, same % as NQ 25pt)
 ORB_STOP_BUFFER_POINTS = 2.0    # effective stop distance = 9pt from entry
@@ -157,8 +158,11 @@ PYRAMID_MAX_CONTRACTS = 2
 PYRAMID_MIN_PROFIT_BUFFER = 1500.0
 PYRAMID_WARMUP_TRADES = 5
 
-# -- Eval Mode (disabled for backtest) -------------------------------------
-EVAL_MODE = False
+# -- Eval Mode (Lucid 50K Pro — same rules as NQ account) -----------------
+EVAL_MODE = False               # set True when running the Lucid evaluation
+EVAL_PROFIT_TARGET = 3000.0     # halt when balance reaches STARTING_BALANCE + 3000
+EVAL_MAX_LOSS = 2000.0          # fail if balance drops 2000 below STARTING_BALANCE
+EVAL_START_DATE = ""            # e.g. "2026-07-15" — leave blank to auto-detect from log
 
 # -- Telegram Alerts -------------------------------------------------------
 TELEGRAM_ALERTS_ENABLED = False

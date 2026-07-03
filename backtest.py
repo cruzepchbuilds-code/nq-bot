@@ -71,6 +71,16 @@ class Backtester:
         # Signal strength tracking
         self.or_volume_history = []   # rolling 20-day list of OR volumes
         self.prev_day_mode     = None # day_mode from previous day
+        # Confidence score state (pivot / VWAP / zone / slope)
+        self.prev_day_high   = None   # prior RTH high  → pivot levels
+        self.prev_day_low    = None   # prior RTH low   → pivot levels
+        self.prev_day_close  = None   # prior RTH close → pivot P=(H+L+C)/3
+        self.prev_day_vwap   = None   # prior RTH VWAP  → directional filter
+        self.day_vwap_pv     = 0.0    # current-day cumulative price×volume
+        self.day_vwap_v      = 0.0    # current-day cumulative volume
+        self.vwap_at_935     = None   # VWAP snapshot at 9:35 (slope start)
+        self.or_vwap_44      = None   # VWAP snapshot at 9:44 (slope end)
+        self.or_close_price  = None   # 9:44 bar close (OR context price)
 
     # ── ORB position lifecycle ───────────────────────────────────────────────
     def try_enter(self, sig, ts):
@@ -144,6 +154,19 @@ class Backtester:
 
         # Still cap by max_c (regime calendar constraint)
         contracts = min(contracts, max_c)
+
+        # ── Confidence score gate (pivot / VWAP / zone / slope) ────────────
+        if getattr(config, "CONFIDENCE_SCORE_ENABLED", False):
+            cs = self._confidence_score(sig)
+            if cs < getattr(config, "CONFIDENCE_SCORE_SKIP_BELOW", 0):
+                return  # score=0 → PF 0.691 OOS, skip
+            if (not config.EVAL_MODE
+                    and cs >= getattr(config, "CONFIDENCE_SCORE_DOUBLE_AT", 999)):
+                contracts = min(2, max_c)  # high conviction → 2c within ceiling
+
+        # ── First-bar hard gate (skip 9:45 entry — OOS PF 0.839 even at score≥3) ─
+        if getattr(config, "ORB_SKIP_FIRST_BAR", False) and ts.time() <= OR_END:
+            return
 
         # Eval mode: override to 1 contract — minimize variance during evaluation
         if config.EVAL_MODE:
@@ -347,7 +370,8 @@ class Backtester:
         fill = sig.entry + SLIP if sig.direction == "long" else sig.entry - SLIP
         self.asia_position = {
             "dir": sig.direction, "entry": fill, "stop": sig.stop,
-            "target": sig.target, "contracts": 1,
+            "target": sig.target,
+            "contracts": min(getattr(config, "ASIA_MAX_CONTRACTS", 1), config.MAX_CONTRACTS),
             "mode": "asia_gap", "entry_time": ts,
         }
         self.asia.traded_today = True
@@ -383,6 +407,48 @@ class Backtester:
         })
         self.asia_position = None
 
+    # ── Confidence score (pivot / VWAP / zone / slope) ───────────────────────
+    def _confidence_score(self, sig):
+        """Return 0-4 conviction score for this signal based on prior-day context."""
+        if (self.prev_day_high is None or self.prev_day_low is None
+                or self.prev_day_close is None or self.or_close_price is None):
+            return 4  # insufficient prior-day data — pass through without penalty
+
+        is_long = sig.direction == "long"
+        px = self.or_close_price  # 9:44 bar close (OR context price)
+
+        H, L, C = self.prev_day_high, self.prev_day_low, self.prev_day_close
+        P  = (H + L + C) / 3.0
+        R1 = 2 * P - L
+        R2 = P + (H - L)
+        S1 = 2 * P - H
+        S2 = P - (H - L)
+
+        score = 0
+
+        # +1 pivot alignment: OR close above/below prior-day P
+        if (is_long and px > P) or (not is_long and px < P):
+            score += 1
+
+        # +1 prior session VWAP alignment
+        if self.prev_day_vwap is not None:
+            if (is_long and px > self.prev_day_vwap) or (not is_long and px < self.prev_day_vwap):
+                score += 1
+
+        # +1 HOT zone (R1_R2 longs / S2_S1 shorts — p=0.017 all-years bootstrap)
+        if is_long and R1 <= px <= R2:
+            score += 1
+        elif not is_long and S2 <= px <= S1:
+            score += 1
+
+        # +1 VWAP slope aligned (rising 9:35→9:44 for longs, falling for shorts)
+        if self.vwap_at_935 is not None and self.or_vwap_44 is not None:
+            slope = self.or_vwap_44 - self.vwap_at_935
+            if (is_long and slope > 0) or (not is_long and slope < 0):
+                score += 1
+
+        return score
+
     # ── Main loop ────────────────────────────────────────────────────────────
     def run(self, bars, *, silent=False):
         current_day = None
@@ -409,6 +475,12 @@ class Backtester:
                         if len(self.or_volume_history) > 20:
                             self.or_volume_history.pop(0)
                     self.prev_day_mode = self.day_mode
+                    # Save prior-day context for confidence score
+                    self.prev_day_high  = self.day_high
+                    self.prev_day_low   = self.day_low
+                    self.prev_day_close = self._last_close
+                    self.prev_day_vwap  = (self.day_vwap_pv / self.day_vwap_v
+                                           if self.day_vwap_v > 0 else None)
                 current_day = ts.date()
                 self.strategy.reset_day(prev_close=self._last_close,
                                         day_of_week=ts.weekday())
@@ -417,6 +489,12 @@ class Backtester:
                 self.day_mode  = "pending"
                 self.day_high  = self.day_low = None
                 self.bank.on_new_bar_date(current_day)
+                # Reset daily VWAP accumulators for the new session
+                self.day_vwap_pv    = 0.0
+                self.day_vwap_v     = 0.0
+                self.vwap_at_935    = None
+                self.or_vwap_44     = None
+                self.or_close_price = None
                 # Month skip gate (SKIP_MONTHS list in config)
                 skip_months = getattr(config, "SKIP_MONTHS", [])
                 if skip_months and current_day.month in skip_months:
@@ -466,6 +544,17 @@ class Backtester:
             self.check_exit(bar, ts, force=(t >= FLATTEN))
 
             self.strategy._update_vwap(bar)
+            # Accumulate RTH VWAP and capture OR snapshots for confidence score
+            _bv = bar["volume"]
+            if _bv > 0:
+                self.day_vwap_pv += bar["close"] * _bv
+                self.day_vwap_v  += _bv
+            if t == time(9, 35) and self.vwap_at_935 is None and self.day_vwap_v > 0:
+                self.vwap_at_935 = self.day_vwap_pv / self.day_vwap_v
+            if t == time(9, 44):
+                self.or_close_price = bar["close"]
+                if self.day_vwap_v > 0:
+                    self.or_vwap_44 = self.day_vwap_pv / self.day_vwap_v
             if t < OR_END:
                 self.strategy.update_opening_range(bar)
                 continue
