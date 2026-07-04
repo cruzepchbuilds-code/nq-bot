@@ -44,13 +44,19 @@ all numbers strict 1c unless noted, costs $14.50/trade included.
 any single trade worse than −$700 at 1c · trade count drifting outside 2–6/wk over a
 full month · fills averaging >2pt worse than chart closes.
 
-## 4. Tradeify lifecycle (the extraction business)
+## 4. Fleet lifecycle — SUPERSEDED 2026-07-03
 
-1. Eval ($99): lean config → 64% pass, median 2 weeks. Reset and retry on failure (~$155 expected/funded).
-2. Funded: flip to funded settings same file. **Daily path.** Sweep everything above $50k every day.
-3. Death at trailing floor = COMPLETED CYCLE, not failure (~$4,600 extracted avg; each death ≈ +$1,740 net transfer from firm). Replace, repeat. Keep one eval always cooking.
-4. Business sim (1 Lucid + 2 Tradeify slots, 333 worlds): 12-mo net p10 $58k / p50 $133k / p90 $241k. **Plan on p10.**
-5. VERIFY with Tradeify before scaling: DLL-breach consequence, trailing lock behavior, withdrawal-vs-HWM, min payout, max accounts, copier/churn policy.
+**Tradeify: officially SKIP** (rank 77/108, 12× ROI vs ETF Static's 82× — firmcard.py).
+The old business sim here (p50 $133k) was **debunked** by fleet_audit.py (it modeled the
+wrong rules). Current doctrine (buffer_policy.py + capital_plan.py, see LEDGER.md):
+
+1. Lucid: withdraw to **$55k, never below** (the $5k cushion is free — consistency
+   rule builds it anyway — and makes accounts ~5× longer-lived with MORE extracted).
+2. Reinvest above-cushion cash: Lucid to 5, then ETF 50K Static (buy eval with
+   DEFAULT settings, ~70% pass, ~$332 all-in per funded).
+3. Death = same-day replacement, no exceptions (user commitment 07-03).
+4. ≈ Month 8 (fleet built): STOP buying props; payouts fund the personal live
+   account (1 NQ per $25k, compound to ~$150k working capital, then it's income).
 
 ## 5. Manual kill-switch rules (write-once, follow always)
 
@@ -88,7 +94,40 @@ compare fills vs printed prices — that delta IS the live-vs-backtest tracking 
 
 ## 9. Research status
 
-NQ intraday frontier: **closed** (3 systematic sweeps + v12 lab, last 12 concepts all
-rejected). Open items requiring new inputs: GC data via Databento (only untested
-uncorrelated instrument) · event-day playbook (sweep-rejects work in crash vol) ·
-live-fill-driven cost calibration after 1 month of statements. Repo still needs `git push`.
+Frontier **closed** across 6 markets (07-03 five-desk sweep: CL 0/1008 configs, GC
+5 families, crypto 5 structures, index fades — all killed; full receipts in
+`brain/research/LEDGER.md`, the machine's permanent memory). Two survivors BENCHED
+behind month-3 gates: NQ close-hour leg (~$5.5k/yr, zero collision) · ES magnet fade
+(~$3.3k/yr, needs account design). Open on inputs: live-fill cost calibration after
+month 1 · tick pilot ($62, awaiting go) · ZN/6E/SI pilots priced <$17 total.
+
+## 10. Forward-test protocol (predefined 2026-07-03 — BEFORE first live trade)
+
+**Sample:** first **30 resolved trades** (target/stop exits; time-exits excluded) or
+Oct 3 2026, whichever first. NO parameter or config changes during the sample —
+safety disables only. Day-15 checkpoint (~Jul 20) is a health check, not a change gate.
+
+**PASS gates (tools decide, feelings don't):**
+1. `journal.py` avg drift better than **−$37/trade** (25% of expectancy)
+2. `sentinel.py`: no component below its own p05 band
+3. Losing streak ≤ 15 · no day worse than −$909 (engine bound)
+4. **ASIA execution:** entries must print ≤18:16 — two fills at 18:17+ = disable the
+   Asia leg (edge decays within minutes of the reopen; param_stability 07-03; the
+   nightly digest warns automatically)
+5. **ASIA statistical watch** (weakest leg — reality_check deflated p≈1.0): first 8
+   resolved Asia trades net negative → disable pending month-3 review
+
+**Diagnosis order on failure:** (1) fill LATENCY first — a 60s delay costs 48% of the
+edge and REJ/PM are the fragile legs (noise_mc); (2) slippage second — break-even is
+25.7 ticks/trade vs 1–3 realistic, so slippage alone is almost never the cause;
+(3) parameters LAST, only via law §5.
+
+**PASS →** Phase-2 scaling + month-3 bench review (close-hour leg · ratchet verdict ·
+OR-max 125 consideration). **FAIL →** halt purchases, investigate fills, touch nothing.
+
+**Statistical honesty (reality_check 07-03):** no look-ahead found (edge dies on
+shuffled worlds, as it should). Morning ORB survives full selection-bias deflation
+(p=0.024). REJ/PM/ASIA are plausible but not statistically separable from search
+luck on backtest evidence alone — **live trades are their exam.** RampMode already
+sequences trust correctly: the proven leg trades first; the marginal legs unlock
+only after +$800 of real profit.

@@ -1,4 +1,13 @@
 // CruzCapitalES.cs — ES ORB Strategy for NinjaTrader 8
+//
+// *** DO NOT DEPLOY — AUDIT FAILED (2026-07-03, brain/research/es_v4_audit.py) ***
+// The Feb/Mar/Nov month selection was fit on the 2024-26 "OOS" period itself:
+//   - Same rules in 2022-23: PF 0.63, -$10,154 (months ranked Apr/Oct/May there)
+//   - Mar was the WORST IS month (PF 0.51) yet got selected
+//   - Honest IS-selected months (Apr/Oct/May) produced -$1,521 in 2024-26
+// The claimed OOS PF 2.17 reproduces exactly — and is look-ahead, not edge.
+// Keep for reference only.
+//
 // Same logic as CruzCapitalNQ but calibrated for ES ($50/pt vs NQ $20/pt)
 //
 // HOW TO INSTALL:

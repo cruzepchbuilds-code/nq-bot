@@ -28,6 +28,7 @@
 |----------|--------|---------|------------|
 | PM VWAP Continuation | 12:00-14:30 ET, VWAP touch + direction b | {'oos_net': -11500, 'oos_pf':  | Strong negative OOS P&L, cascades halts |
 | Gap Fill Strategy | Large gap days, fade toward prior close | {'oos_net': -4400, 'oos_pf': 0 | Consistent OOS drag across all years |
+| CL 9:00 ORB (native sweep) | 1008 cfgs: OR 5/10/15m, stop 0.10-0.50, 1.5-3R, cut 10:30/11:00, flat 11:30-14:00 | 0/1008 cfgs IS PF>1.0 (max 0.95); frictionless IS max 1.07; best cfg net -$15.7k | No gross edge — OR breaks 99% of days (zero selectivity). Wed/EIA sign-flips IS→OOS (1.04→0.80). cl_orb.py 2026-07-03. Ledger item CLOSED |
 | VWAP Pullback (AM) | Second trade after ORB, VWAP touch | {'oos_net': -1400, 'oos_pf': 1 | Redundant to ORB, insufficient independent edge |
 | London/NY Overlap 8am-9:25am | Range classification, entry at 9:05 | {'oos_net': -2900, 'oos_pf': 1 | Below PF threshold, unstable YoY |
 | London Pre-Market 3am-5am | ORB at 3:00-3:15 ET, exit 5am | {'best_oos_pf': 1.17, 'volume_ | Max OOS PF 1.17 across all configs. Volume 4.2% of |

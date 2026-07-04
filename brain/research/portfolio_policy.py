@@ -18,6 +18,18 @@ Reported per policy: net, $/wk, worst day, EOD max drawdown, losing streaks,
 plus marginal per-strategy contribution and rejection-after-morning-loss slice.
 
 Morning config: SKIP_FRIDAYS=False (user preference), funded 3R, pyramid OFF, 1c.
+
+FIXED 2026-07-03 (param-stability audit side-find): run_year_morning now
+transplants the regime-ATR window as a bounded 14-day deque (was list(...) ->
+unbounded -> expanding mean; ref param_stability.py). Every importer of
+run_year_morning inherits the fix. Re-run deltas old->new (same data):
+  morning ORB trades 157 -> 162; combined trading days 710 -> 713
+  policy grid nets shift -0.5%..-0.1%; policy ORDERING unchanged
+  OOS 2025-26 @ live policy DLL=900 maxL=2: net +70,652 -> +71,602 (+1.3%),
+    losing streak 7 -> 5
+  composed v12 stream (firmcard --rebuild done same day): full-period net
+    -$101 (-0.08%), OOS net +$63,678 -> +$65,183 (+2.4%), 3 new OOS days
+No policy decision changes.
 """
 
 import sys, os
@@ -32,7 +44,7 @@ config.EVAL_MODE           = False   # funded 3R targets
 
 from backtest import Backtester, load_csv
 from datetime import datetime, time, date
-from collections import defaultdict
+from collections import defaultdict, deque
 from itertools import product
 
 DATA   = "data/nq_full.csv"
@@ -61,7 +73,8 @@ def run_year_morning(bars, year):
     warmup = TimedBacktester(); warmup.run(prior, silent=True)
     bt = TimedBacktester()
     bt._last_close         = warmup._last_close
-    bt.regime.daily_ranges = list(warmup.regime.daily_ranges)
+    bt.regime.daily_ranges = deque(warmup.regime.daily_ranges,
+                                   maxlen=config.REGIME_ATR_PERIOD)
     bt.or_volume_history   = list(warmup.or_volume_history)
     bt.prev_day_mode       = warmup.prev_day_mode
     bt.run(subset, silent=True)

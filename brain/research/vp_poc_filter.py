@@ -45,11 +45,18 @@ Usage:
     python3 brain/research/vp_poc_filter.py --quick    # IS/OOS only, NQ
     python3 brain/research/vp_poc_filter.py --nq       # NQ only
     python3 brain/research/vp_poc_filter.py --es       # ES only
+
+NOTE (2026-07-03): regime-ATR warmup transplant fixed to a bounded 14-day
+deque (was list(...) -> unbounded -> expanding mean; ref param_stability.py,
+found by the parameter-stability audit). Results produced by this script
+BEFORE this fix used the buggy expanding-mean regime gate - re-run before
+citing absolute numbers (live-params morning-ORB effect: OOS N 52->64,
+PF 2.84->2.35).
 """
 
 import sys, os, argparse
 from datetime import date, timedelta
-from collections import defaultdict
+from collections import defaultdict, deque
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import config
@@ -122,7 +129,7 @@ def run_year_fresh(bars, year):
     warmup.run(prior, silent=True)
     bt = Backtester()
     bt._last_close         = warmup._last_close
-    bt.regime.daily_ranges = list(warmup.regime.daily_ranges)
+    bt.regime.daily_ranges = deque(warmup.regime.daily_ranges, maxlen=config.REGIME_ATR_PERIOD)
     bt.or_volume_history   = list(warmup.or_volume_history)
     bt.prev_day_mode       = warmup.prev_day_mode
     bt.run(subset, silent=True)

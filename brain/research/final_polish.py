@@ -14,6 +14,13 @@ Last-mile improvement pass over the full v11 + VWAP v6 system.
      accounts. Halt the week at -$X: cost in net vs gain in fresh-start survival.
 
 All strict 1c. IS 2022-24 / OOS 2025-26 where relevant.
+
+NOTE (2026-07-03): upstream fix — portfolio_policy.run_year_morning's
+regime-ATR window is now a bounded 14-day deque (was unbounded list ->
+expanding mean). This script inherits the fix via import; results recorded
+BEFORE this date used the buggy morning stream (composed v12 stream deltas:
+710 -> 713 trading days, full-period net -0.08%, OOS 2025-26 net +2.4%) —
+re-run before citing absolute numbers.
 """
 
 import sys, os

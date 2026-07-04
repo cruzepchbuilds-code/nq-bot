@@ -16,12 +16,12 @@ Levers tested (policy-level, applied to the SAME underlying trades):
 
 Reports pass% + median/p90 days for 2024+ starts and all starts.
 
-NOTE (2026-07-03): upstream regime-ATR fix in portfolio_policy (unbounded
-list -> bounded 14-day deque; build_components inherits via
-pp.run_year_morning). Grid re-run post-fix: BASELINE unchanged (48% pass,
-med 10 td); variant cells shift <=2pt (3R+maxLoss=1+lock1100 56->54%,
-maxLoss=1 48->47%, no-ASIA 51->52%, 2R+maxLoss=1+lock600 47->48%); no
-ranking changes (ORB3+REJ only still top at 64%).
+NOTE (2026-07-03): upstream fix — portfolio_policy.run_year_morning's
+regime-ATR window is now a bounded 14-day deque (was unbounded list ->
+expanding mean). This script inherits the fix via import; results recorded
+BEFORE this date used the buggy morning stream (composed v12 stream deltas:
+710 -> 713 trading days, full-period net -0.08%, OOS 2025-26 net +2.4%) —
+re-run before citing absolute numbers.
 """
 
 import sys, os
