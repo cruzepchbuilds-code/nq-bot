@@ -41,6 +41,7 @@ import config
 from strategies.strategy_us import ORBStrategy, Signal
 from strategies.strategy_london import LondonStrategy
 from strategies.strategy_asia import AsiaStrategy
+from strategies.strategy_pm import PMORBStrategy
 from regime import RegimeDetector
 from bankroll import BankrollManager
 import signal_strength as ss
@@ -240,13 +241,15 @@ class PaperTradingSession:
         self.strategy  = ORBStrategy()
         self.london    = LondonStrategy()
         self.asia      = AsiaStrategy()
+        self.pm        = PMORBStrategy()
         self.regime    = RegimeDetector()
         self.bank      = BankrollManager()
-        self.trade_log = TradeLog()
+        self.trade_log = TradeLog(f"live/paper_trades_{symbol}.csv")
 
         self.open_position:    Optional[PaperPosition] = None
         self.london_position:  Optional[PaperPosition] = None
         self.asia_position:    Optional[PaperPosition] = None
+        self.pm_position:      Optional[PaperPosition] = None
 
         self.or_volume_history: list[float] = []
         self.prev_day_mode: Optional[str]   = None
@@ -482,6 +485,10 @@ class PaperTradingSession:
                 and not self.open_position):
             self._try_orb_entry(bar, ts)
 
+        # PM ORB (1:00-2:15 range/entry; bankroll limits cap losses)
+        if getattr(config, "PM_ORB_ENABLED", False) and t >= dtime(13, 0):
+            self._process_pm_bar(bar, ts)
+
     # ── Risk alerts ──────────────────────────────────────────────────────────
 
     def _check_halt_alert(self):
@@ -490,6 +497,22 @@ class PaperTradingSession:
         ok, reason = self.bank.can_trade()
         if not ok and reason != self._last_halt_reason:
             da.post_risk_alert(reason, symbol=self.symbol)
+            # Eval-specific Telegram alerts on permanent halt
+            if not ok and self.bank.s.halted_permanently and config.EVAL_MODE:
+                s = self.bank.s
+                profit = s.balance - config.STARTING_BALANCE
+                if "EVAL PASSED" in s.halt_reason:
+                    tg.send_eval_passed(
+                        self.symbol, profit,
+                        getattr(config, "EVAL_PROFIT_TARGET", 3000.0),
+                        self._trade_count,
+                        0,   # trading day count not tracked in live session
+                    )
+                elif "EVAL FAILED" in s.halt_reason:
+                    tg.send_eval_failed(
+                        self.symbol, s.balance,
+                        config.STARTING_BALANCE - getattr(config, "EVAL_MAX_LOSS", 2000.0),
+                    )
         self._last_halt_reason = None if ok else reason
 
     # ── Day lifecycle ────────────────────────────────────────────────────────
@@ -503,15 +526,19 @@ class PaperTradingSession:
         self.strategy.reset_day(prev_close=self._last_close, day_of_week=dow)
         self.london.reset_day()
         self.asia.reset_session()
+        self.pm.reset_day(day_of_week=dow)
         self.bank.on_new_bar_date(self._session_date)  # correct BankrollManager API
         self.open_position   = None
         self.london_position = None
         self.asia_position   = None
+        self.pm_position     = None
         self._check_halt_alert()
 
-        # Skip filters applied at day start (SKIP_MONTHS and SKIP_MONDAYS)
+        # Skip filters applied at day start (SKIP_MONTHS, SKIP_MONDAYS, SKIP_FRIDAYS)
         skip_months = getattr(config, "SKIP_MONTHS", [])
         if config.SKIP_MONDAYS and dow == 0:
+            self.day_mode = "skip"
+        elif getattr(config, "SKIP_FRIDAYS", False) and dow == 4:
             self.day_mode = "skip"
         elif skip_months and ts.month in skip_months:
             self.day_mode = "skip"
@@ -640,7 +667,8 @@ class PaperTradingSession:
     def _check_position_exits(self, bar: dict, ts: datetime):
         for pos, label in [(self.open_position, "ORB"),
                            (self.london_position, "LDN"),
-                           (self.asia_position, "ASIA")]:
+                           (self.asia_position, "ASIA"),
+                           (self.pm_position, "PM")]:
             if not pos:
                 continue
             exit_info = pos.check_exit(bar)
@@ -704,6 +732,8 @@ class PaperTradingSession:
             self.open_position = None
         elif label == "LDN":
             self.london_position = None
+        elif label == "PM":
+            self.pm_position = None
         else:
             self.asia_position = None
 
@@ -714,7 +744,8 @@ class PaperTradingSession:
         exit_price = self._last_bar_close or 0.0
         for pos, label in [(self.open_position, "ORB"),
                            (self.london_position, "LDN"),
-                           (self.asia_position, "ASIA")]:
+                           (self.asia_position, "ASIA"),
+                           (self.pm_position, "PM")]:
             if pos:
                 self._close_paper_position(pos, exit_price, reason, ts, label)
         if self.live_orders and self.execution:
@@ -778,26 +809,93 @@ class PaperTradingSession:
         elif t == dtime(18, 15) and getattr(self.asia, "entry_pending", False):
             sig = self.asia.check_entry(bar)
             if sig:
-                self._open_paper_position(sig, 1, ts, "ASIA")
+                asia_c = min(getattr(config, "ASIA_MAX_CONTRACTS", 1), config.MAX_CONTRACTS)
+                self._open_paper_position(sig, asia_c, ts, "ASIA")
                 self.asia.traded_today = True
+
+    # ── PM ORB session (1:00-2:15 PM range/entry, 3:55 hard exit) ────────────
+
+    def _process_pm_bar(self, bar: dict, ts: datetime):
+        from strategies.strategy_pm import (PM_OR_START, PM_OR_END,
+                                            PM_OR_DONE, PM_ENTRY_END, PM_FLATTEN)
+        t = ts.time()
+
+        # Manage open PM position (stop/target/hard-exit)
+        if self.pm_position:
+            exit_info = self.pm_position.check_exit(bar)
+            if exit_info:
+                result, price = exit_info
+                self._close_paper_position(self.pm_position, price, result, ts, "PM")
+            elif t >= PM_FLATTEN:
+                self._close_paper_position(
+                    self.pm_position, bar["close"], "flatten", ts, "PM")
+            return
+
+        if self.pm.traded_today:
+            return
+
+        # Build OR 13:00-13:14
+        if PM_OR_START <= t <= PM_OR_END:
+            self.pm.update_or(bar)
+            return
+
+        # Finalize OR at 13:15
+        if t == PM_OR_DONE and not self.pm.or_complete:
+            self.pm.finalize_or()
+
+        if not self.pm.or_ok:
+            return
+
+        # Entry window 13:15-14:15
+        if PM_OR_DONE <= t <= PM_ENTRY_END and not self.pm_position:
+            ok, _ = self.bank.can_trade()
+            if not ok:
+                return
+            sig = self.pm.check_entry(bar)
+            if sig:
+                contracts = min(config.MAX_CONTRACTS,
+                                getattr(config, "PM_ORB_MAX_CONTRACTS", config.MAX_CONTRACTS))
+                self.pm.mark_traded()
+                self._open_paper_position(sig, contracts, ts, "PM")
 
     # ── Reporting ────────────────────────────────────────────────────────────
 
     def _print_summary(self):
-        print(f"\n{'═'*52}")
+        s = self.bank.s
+        print(f"\n{'═'*56}")
         print(f"  Session Summary [{self.symbol}]  {self._session_date}")
-        print(f"{'─'*52}")
+        print(f"{'─'*56}")
         print(f"  Trades    : {self._trade_count}")
         print(f"  Net P&L   : ${self._session_pnl:+,.0f}")
-        print(f"  Bank Bal  : ${self.bank.s.balance:,.0f}")
-        print(f"{'═'*52}\n")
+        print(f"  Bank Bal  : ${s.balance:,.0f}")
+
+        if config.EVAL_MODE:
+            profit     = s.balance - config.STARTING_BALANCE
+            target     = getattr(config, "EVAL_PROFIT_TARGET", 3000.0)
+            max_loss   = getattr(config, "EVAL_MAX_LOSS", 2000.0)
+            floor      = config.STARTING_BALANCE - max_loss
+            remaining  = max(0.0, target - profit)
+            pct        = min(profit / target * 100, 100.0) if target else 0
+            headroom   = s.balance - floor
+            bar_n      = int(pct / 10)
+            bar        = "█" * bar_n + "░" * (10 - bar_n)
+            print(f"{'─'*56}")
+            print(f"  EVAL PROGRESS:")
+            print(f"  [{bar}] {pct:.0f}%")
+            print(f"  Profit    : ${profit:+,.0f}  /  ${target:,.0f} target")
+            print(f"  Remaining : ${remaining:,.0f}")
+            print(f"  Floor     : ${floor:,.0f}  (headroom ${headroom:,.0f})")
+            if s.halted_permanently:
+                print(f"\n  *** {s.halt_reason} ***")
+
+        print(f"{'═'*56}\n")
 
         tg.send_daily_summary(self.symbol, self._session_date or "session",
                               self._trade_count, self._session_wins, self._session_losses,
-                              self._session_pnl, self.bank.s.balance)
+                              self._session_pnl, s.balance)
         da.post_daily_pnl(self.symbol, self._session_date or "session",
                           self._trade_count, self._session_wins, self._session_losses,
-                          self._session_pnl, self.bank.s.balance)
+                          self._session_pnl, s.balance)
 
 
 # ---------------------------------------------------------------------------

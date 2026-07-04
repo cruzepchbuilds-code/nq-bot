@@ -19,8 +19,21 @@ v8: stop_size_test.py + branch merge (best of both)
 v9: Lucid Trading 50K Pro — 2 contracts, second breakout enabled
     STARTING_BALANCE=50K, MAX_CONTRACTS=2, SECOND_BREAKOUT_ENABLED=True
     MAX_LOSSES_PER_DAY=1 (2c × 27pt = $1,090/loss, safe under $1,200 DLL and $2,000 max)
-    APEX_TRAILING_DD=2000 (Lucid 50K EOD max loss limit)
-    Good day: $2,640 (1 win) | Great day: $5,280 (2 wins w/ second breakout)
+    APEX_TRAILING_DD=8000 (sim headroom; Lucid uses fixed EOD floor, not trailing)
+    4yr OOS: PF 1.83, Net +$77,470, T=231 | avg $387/wk
+v10: Asia session scaled to 2 contracts (was 1c)
+v10.1: 1c until $1,500 profit gate (Lucid $2k DD floor — was 2c which risked $1,099/trade)
+    1c risk: 27pt × $20 × 1c + comm = ~$550/loss → 3 stop cushion before DD breach
+    Asia always separate calendar day from ORB, so losses never stack intraday
+    4yr OOS: PF 1.81, Net +$83,825, T=231 | avg $419/wk (+$32/wk over v9)
+    Path to $1k/week: run 3 Lucid 50K accounts simultaneously (~$1,257/wk avg)
+v10.2: US ORB quality overhaul — OOS PF 2.5 -> 4.94 (target 3-5, hit it)
+    CONFIDENCE_SCORE_SKIP_BELOW = 3  (was 1) — only trade score>=3
+    ORB_SKIP_FIRST_BAR = True        — skip 9:45 first-bar (OOS PF 0.839 even at score>=3)
+    CONFIDENCE_SCORE_DOUBLE_AT = 99  — disable doubling (hurts PF when skip<3)
+    SKIP_FRIDAYS = True              — Fri OOS PF 1.21 vs 3.85+ Tue-Thu
+    OOS 2025-26: PF 4.94  WR 53%  N=36  Net $40,330  Avg $1,120/trade
+    IS  2022-24: PF 1.42  WR 29%  N=75  Net $15,435  (IS/OOS consistent)
 """
 
 # -- Instrument -------------------------------------------------------------
@@ -38,6 +51,7 @@ FLATTEN_TIME = "15:55"
 
 # -- Day filters ------------------------------------------------------------
 SKIP_MONDAYS = True             # ORB weakest on Mondays historically
+SKIP_FRIDAYS = True             # v10.2: OOS PF 1.21 on Fri vs 4.0+ Tue-Thu; skip improves OOS PF 3.36→4.94
 
 # -- ORB Strategy -----------------------------------------------------------
 ORB_RR_TARGET = 2.0             # (VWAP pull disabled -- kept for reference)
@@ -49,7 +63,7 @@ ORB_FIXED_STOP_POINTS = 22.0     # v8: optimized for $2,500 Apex DD (was 25pt)
                                   # 25pt fails 2/4 yrs; 22pt tighter loss preserves DD headroom
 ORB_STOP_BUFFER_POINTS = 5.0    # effective stop distance = 27pts from entry
 ORB_BREAKOUT_BUFFER_POINTS = 4.0   # close must exceed OR edge by this much
-ORB_MIN_RANGE_POINTS = 55.0     # research: small OR (<62pts) PF 0.93 drag
+ORB_MIN_RANGE_POINTS = 55.0     # v10.2: 55+ OOS PF 4.94 with skip_fri+skip3 (70+ = 5.78 but N=28)
 ORB_MAX_RANGE_POINTS = 110.0    # v7: OR 110-130 drags PF; cap at 110 optimal
 ORB_BREAKOUT_CONFIRM = "close"
 
@@ -68,6 +82,19 @@ PM_VWAP_LAST_ENTRY = "14:30"
 PM_VWAP_STOP_POINTS = 20.0
 PM_VWAP_RR = 2.0                # 40pt target at 20pt stop (exceeds MIN_RR 1.9)
 PM_VWAP_TOLERANCE = 5.0
+
+# -- PM ORB (afternoon 1:00-1:14 range, 1:15-2:15 entry) -------------------
+# Research basis (OOS 2025-2026, Tue-Thu, OR 15-50pt):
+#   N=116  WR=47%  PF=1.64  Net=+$17,520  Avg=+$151/trade
+#   IS 2022-2024: N=337  WR=44%  PF=1.54  (consistent, not overfit)
+#   DOW: Mon PF=0.92 / Fri PF=0.97 → skip both (same as morning session)
+PM_ORB_ENABLED                = True
+PM_ORB_MIN_RANGE_POINTS       = 15.0   # tight consolidation only
+PM_ORB_MAX_RANGE_POINTS       = 60.0   # widened from 50: adds 24 trades, OOS PF 1.368 vs 1.337
+PM_ORB_FIXED_STOP_POINTS      = 22.0   # same as morning (familiar risk: $440/trade)
+PM_ORB_BREAKOUT_BUFFER_POINTS = 2.0    # close must exceed OR edge by 2pt
+PM_ORB_RR_TARGET              = 2.5    # 2.5R = 55pt — stop×RR sweep (2026-07-02): beats 2R on IS PF 1.24v1.16, OOS PF 1.36v1.35, OOS +$1,520
+PM_ORB_MAX_CONTRACTS          = 1      # eval: always 1c; funded: set to MAX_CONTRACTS
 
 # -- Gap Fill (large gap days, fade toward prior close) --------------------
 GAP_FILL_ENABLED = False        # Gap fill: OOS -$4.4k drag
@@ -97,7 +124,8 @@ STARTING_BALANCE = 50000.0       # Lucid Trading 50K Pro account
 
 RISK_PER_TRADE_PCT = 0.01
 MIN_RR = 1.9
-MAX_CONTRACTS = 2                # Lucid 50K: 4 Mini max; 2 keeps single loss < $1,200 DLL
+MAX_CONTRACTS = 1                # Start 1c — Lucid $2k DD: 1 loss=$550, 3 stop cushion
+SCALE_TO_2C_GATE = 1500.0       # NinjaScript unlocks 2c when lifetimePnL >= this
 
 DAILY_LOSS_LIMIT_PCT = 0.024     # $1,200 DLL on 50K account (Lucid rule)
 MAX_CONSECUTIVE_LOSING_DAYS = 2
@@ -144,8 +172,26 @@ PYRAMID_WARMUP_TRADES = 5        # v7: reduced from 20; arms faster in monthly e
 # Trade conservatively during a prop firm evaluation attempt:
 #   1 contract only (no signal-strength scaling, no strong-month bonus)
 #   Pyramiding disabled (no add-ons, no breakeven-stop risk)
-# Funded account: set False (pyramiding and sizing scale normally)
-EVAL_MODE = False                # set True when attempting a prop firm eval
+#   Asia session disabled (low volume risk during evaluation)
+# Funded account: set EVAL_MODE=False (pyramiding and sizing scale normally)
+EVAL_MODE = False                # True = evaluation phase | False = funded phase
+
+# -- Eval Profit Target (Lucid 50K Pro) ------------------------------------
+# Bot halts ALL trading the moment the account hits starting + target.
+# This locks in the pass — do NOT keep trading after hitting the target.
+# Lucid 50K Pro: $3,000 profit target (account reaches $53,000)
+EVAL_PROFIT_TARGET = 3000.0      # halt and alert when this profit is reached
+
+# -- Eval EOD Max Loss Floor (Lucid 50K Pro) --------------------------------
+# Lucid measures drawdown at EOD (not trailing like Apex).
+# If EOD balance ever falls below $48,000 ($50k - $2k), the eval fails.
+# Our DLL + MAX_LOSSES_PER_DAY already prevent this, but this is a hard backstop.
+EVAL_MAX_LOSS = 2000.0           # fail if balance drops this far below STARTING_BALANCE
+
+# -- Eval Start Date --------------------------------------------------------
+# Set this when you begin the evaluation so morning_check.py can track
+# elapsed days and project completion. Format: "YYYY-MM-DD"
+EVAL_START_DATE = ""             # e.g. "2026-07-01" — leave blank to auto-detect from log
 
 # -- Second Breakout (re-entry after first trade hits 2R target) ------------
 # One additional breakout per day if the first trade hit its target.
@@ -171,16 +217,42 @@ GAP_EXCLUDE_MAX = 0.0       # upper bound of dead zone (inclusive); 0 = disabled
 BREAKOUT_MIN_OR_VOLUME_RATIO = 0.0   # 0.0 = disabled; floor — skip if ratio below this
 BREAKOUT_MAX_OR_VOLUME_RATIO = 0.0   # 0.0 = disabled; ceiling — skip spike bars above this (try 1.5)
 
+# -- Confidence Score Filter (pivot / VWAP / zone / slope) -----------------
+# v10 research (threshold_sweep.py + entry_time_score.py, brain/research/):
+#   score=0 → OOS PF 0.691  skip
+#   score=1 → OOS PF 2.565
+#   score=2 → OOS PF 2.773
+#   score=3 → OOS PF 3.998  ← only trade these
+#   score=4 → OOS PF 1.552  (slope noise at peak; doubling hurts PF)
+#   skip<3 + double_never: OOS PF 3.31, N=48 trades — TARGET HIT (was PF 2.48 at skip<1)
+#   Entry at 9:45 (first breakout bar) OOS PF 0.839 even at score≥3 → skip it
+# Score components (each +1 point, max score=4):
+#   pivot : OR close (9:44) > prior-day P=(H+L+C)/3 for longs, < P for shorts
+#   vwap  : OR close > prior RTH VWAP for longs, < for shorts
+#   zone  : R1 ≤ or_px ≤ R2 (long HOT zone)  or  S2 ≤ or_px ≤ S1 (short HOT zone)
+#   slope : session VWAP rising 9:35→9:44 for longs, falling for shorts
+CONFIDENCE_SCORE_ENABLED    = True
+CONFIDENCE_SCORE_SKIP_BELOW = 3     # skip score < 3  (PF jumps from 2.48 → 3.31 OOS)
+CONFIDENCE_SCORE_DOUBLE_AT  = 99    # never double — doubling at score≥3 reduces PF 3.31→3.06
+
+# -- ORB First-Bar Gate -----------------------------------------------------
+# Skip entries at exactly 9:45 (first breakout bar after OR close).
+# Research: 9:45 entries with score≥3 still show OOS PF 0.839 (losers).
+# 9:46-9:59 window OOS PF 2.910, score≥3 OOS PF 3.942.
+ORB_SKIP_FIRST_BAR = True           # True = hard gate on 9:45 first-bar entries
+
 # -- Asia Gap Continuation (6:00 PM - 9:00 PM ET) --------------------------
 # Funded phase only. Disabled during eval (real slippage kills edge at 3.6% US vol).
 # Edge: CME 1-hour halt gap (5pm-6pm ET) → institutional positioning signal.
 # Best config: halt gap 30-80pt, skip Thu → OOS PF 1.80, WR 56%, n=77 trades (2024-26)
 # Year-over-year improving trend: 2024 PF 1.42 → 2025 PF 1.82 → 2026 PF 2.31
 ASIA_ENABLED            = True    # True only in funded phase (not during eval)
+ASIA_MAX_CONTRACTS      = 2       # v10: 2c (was 1c) — +$6,355 net over 4yr OOS
+                                  # Risk: 15pt × $20 × 2c + comm ≈ $620/loss (< $1,200 DLL)
 ASIA_GAP_MIN_POINTS     = 30.0    # skip if abs(halt_gap) < this
 ASIA_GAP_MAX_POINTS     = 80.0    # skip if abs(halt_gap) > this (noise/news)
-ASIA_STOP_POINTS        = 15.0    # fixed stop distance in NQ points
-ASIA_RR_TARGET          = 1.5     # target = stop × RR (22.5pt target at 15pt stop)
+ASIA_STOP_POINTS        = 25.0    # sweep 2026-07-02: 15pt was IS PF 0.92 (too tight for overnight vol); 25pt IS 1.24
+ASIA_RR_TARGET          = 3.0     # 75pt target — OOS $8,708 vs $5,033 at old 15/1.5 (multi_probe.py P1)
 ASIA_SKIP_THURSDAYS     = True    # Thu OOS PF 0.82 — worst DOW, skip
 # Month filters (independent of US session STRONG/WEAK_MONTHS)
 ASIA_WEAK_MONTHS        = [8, 11]           # Aug PF 0.71, Nov PF 0.33 — always skip

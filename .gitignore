@@ -18,3 +18,6 @@ live/paper_trades.csv
 
 # OS
 .DS_Store
+
+# Crypto data — refetch via crypto/fetch_data.py
+crypto/data/*.csv

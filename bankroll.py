@@ -70,6 +70,31 @@ class BankrollManager:
         if s.halted_for_day:
             return False, "Daily halt active"
 
+        # ── Eval mode checks (run before general DD checks) ──────────────────
+        if config.EVAL_MODE:
+            eval_profit    = s.balance - config.STARTING_BALANCE
+            eval_target    = getattr(config, "EVAL_PROFIT_TARGET", 0.0)
+            eval_max_loss  = getattr(config, "EVAL_MAX_LOSS", 2000.0)
+            eval_floor     = config.STARTING_BALANCE - eval_max_loss
+
+            # Eval PASSED — stop all trading immediately
+            if eval_target > 0 and eval_profit >= eval_target:
+                s.halted_permanently = True
+                s.halt_reason = (
+                    f"EVAL PASSED! +${eval_profit:,.0f} "
+                    f"(target +${eval_target:,.0f}) — notify Lucid Trading"
+                )
+                return False, s.halt_reason
+
+            # Eval FAILED — EOD balance breached fixed floor
+            if eval_floor > 0 and s.balance <= eval_floor:
+                s.halted_permanently = True
+                s.halt_reason = (
+                    f"EVAL FAILED — balance ${s.balance:,.0f} "
+                    f"hit floor ${eval_floor:,.0f} (max loss ${eval_max_loss:,.0f})"
+                )
+                return False, s.halt_reason
+
         # max total drawdown from peak
         dd = (s.peak_balance - s.balance) / s.peak_balance
         if dd >= config.MAX_TOTAL_DRAWDOWN_PCT:
